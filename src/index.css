@@ -1,0 +1,388 @@
+:root{
+  --bg:#F8FAFC;
+  --surface:#FFFFFF;
+  --text:#0F172A;
+  --mutedText:#64748B;
+  --border:#E2E8F0;
+
+  --primary:#2563EB;
+  --primaryHover:#1D4ED8;
+
+  --success:#16A34A;
+  --warning:#F59E0B;
+  --danger:#DC2626;
+
+  --readyGlow:#22C55E;
+
+  --r-card:12px;
+  --r-input:10px;
+
+  --shadow-card:0 6px 18px rgba(15,23,42,.08);
+}
+
+html, body, #root { height: 100%; }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.h1x{ font-size:20px; line-height:28px; font-weight:600; }
+.h2x{ font-size:16px; line-height:24px; font-weight:600; }
+.bodyx{ font-size:14px; line-height:20px; font-weight:400; }
+.smallx{ font-size:12px; line-height:16px; font-weight:400; }
+.priceX{ font-size:16px; line-height:24px; font-weight:700; }
+
+.muted{ color:var(--mutedText); }
+
+.cardx{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-card);
+  box-shadow:var(--shadow-card);
+}
+
+.inputx{
+  border:1px solid var(--border);
+  border-radius:var(--r-input);
+  background:#fff;
+}
+
+.btn-primaryx{
+  background:var(--primary);
+  border-color:var(--primary);
+  color:#fff;
+  font-weight:600;
+}
+.btn-primaryx:hover{
+  background:var(--primaryHover);
+  border-color:var(--primaryHover);
+  color:#fff;
+}
+
+.chip{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  font-size:12px;
+  line-height:16px;
+  font-weight:600;
+  user-select:none;
+}
+.chip-empty{ background:#fff; color:#334155; }
+.chip-busy{ background:#EFF6FF; color:#1D4ED8; border-color:#DBEAFE; }
+.chip-ready{ background:#ECFDF5; color:#16A34A; border-color:#D1FAE5; }
+.chip-bill{ background:#FFF7ED; color:#C2410C; border-color:#FFEDD5; }
+
+.ready-dot{
+  width:10px;height:10px;border-radius:50%;
+  background:var(--readyGlow);
+  box-shadow: 0 0 0 6px rgba(34,197,94,.14);
+}
+
+.page{ height:100%; display:flex; flex-direction:column; }
+.page-body{ flex:1; min-height:0; }
+
+.cart-sticky{
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+/* IMPORTANT: 360px fix */
+@media (max-width: 576px){
+  .cart-mobile-height{
+    height: 35vh;
+    min-height: 240px;
+  }
+  .list-scroll{
+    overflow:auto;
+    max-height: calc(35vh - 118px);
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* md+ */
+@media (min-width: 577px){
+  .list-scroll{
+    overflow:auto;
+    max-height: calc(100vh - 260px);
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Cart actions ([-] qty [+]) faqat Cart ichida pastda */
+.cart-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid var(--border);
+}
+
+.cart-actions .qtybox{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.cart-actions .qtynum{
+  min-width:44px;
+  text-align:center;
+  font-weight:700;
+}
+
+/* 360px: cart ichidagi footer chiqib ketmasin */
+@media (max-width: 360px){
+  .cart-mobile-height{ min-height: 220px; }
+  .cart-actions{ gap:8px; }
+}
+
+/*  */
+
+
+.kds-shell{
+  min-height:100vh;
+  padding:12px;
+}
+
+/* top header (rasmga o'xshash) */
+.kds-topbar{
+  background: linear-gradient(180deg, #0B1020 0%, #070B16 100%);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 12px;
+}
+
+.kds-title{
+  font-size:14px;
+  font-weight:800;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color: #fff !important;
+}
+
+.kds-sub{
+  margin-top:4px;
+  font-size:12px;
+  color:var(--text2);
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  color: #fff !important;
+}
+
+.kds-right{
+  text-align:right;
+  font-size:12px;
+  color:var(--text2);
+}
+.kds-right b{ color:var(--text); }
+
+/* board */
+.kds-board{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:12px;
+}
+@media (max-width: 992px){
+  .kds-board{ grid-template-columns: 1fr; }
+}
+
+/* column */
+.kds-col{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:10px;
+  min-height:72vh;
+  padding:10px;
+  position:relative;
+}
+
+/* column top colored line (rasmda bor) */
+.kds-col::before{
+  content:"";
+  position:absolute;
+  left:0; right:0; top:0;
+  height:3px;
+  border-radius:10px 10px 0 0;
+  background:var(--line);
+}
+
+.kds-col[data-col="NEW"]::before{ background:var(--new); }
+.kds-col[data-col="COOKING"]::before{ background:var(--cooking); }
+.kds-col[data-col="READY"]::before{ background:var(--ready); }
+
+.kds-col-title{
+  font-weight:900;
+  font-size:14px;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  margin:4px 0 10px;
+}
+
+.kds-stack{
+  display:grid;
+  gap:12px;
+}
+
+/* droppable highlight (drag paytida) */
+.kds-col.is-over{
+  outline: 2px dashed rgba(255,255,255,0.15);
+  outline-offset: -6px;
+}
+
+/* ticket card (rasmga o'xshash border rangli) */
+.ticket-card{
+  background:var(--card);
+  border:2px solid var(--border);
+  border-radius:10px;
+  padding:12px;
+  min-height:120px;
+  display:grid;
+  gap:10px;
+
+  /* mobil drag uchun MUHIM */
+  touch-action: none;
+}
+
+/* statusga qarab border rangi (rasmdagi kabi) */
+.ticket-card[data-status="NEW"]{ border-color: rgba(47,107,255,0.9); }
+.ticket-card[data-status="COOKING"]{ border-color: rgba(245,158,11,0.9); }
+.ticket-card[data-status="READY"]{ border-color: rgba(34,197,94,0.9); }
+
+/* kechiksa qizil border (faqat kerak bo'lsa) */
+.ticket-card.is-late{ border-color: rgba(239,68,68,0.95); }
+
+.ticket-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+}
+.table-number{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.2px;
+}
+.ticket-time{
+  font-size:12px;
+  font-weight:800;
+  color:var(--text2);
+  white-space:nowrap;
+}
+
+.ticket-items{
+  margin:0;
+  padding-left:18px;
+  color:var(--text2);
+  font-size:13px;
+}
+.ticket-items li{ margin:2px 0; }
+
+/* button (rasmdagi ichki button ko'rinish) */
+.kds-btn{
+  height:44px;
+  width:100%;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.12);
+  color:var(--text);
+  font-weight:900;
+  letter-spacing:.6px;
+  text-transform:uppercase;
+}
+
+.kds-btn:disabled{ opacity:.55; }
+
+/* modal */
+.kds-modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.6);
+  display:grid;
+  place-items:center;
+  padding:12px;
+}
+.kds-modal{
+  width:min(720px, 100%);
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+}
+.kds-modal h3{
+  margin:0;
+  font-size:16px;
+  font-weight:900;
+}
+.kds-modal .meta{
+  margin-top:4px;
+  color:var(--text2);
+  font-size:12px;
+}
+.kds-modal .close-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+}
+
+.ticket-card{
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.kds-col.is-over{
+  outline: 2px dashed rgba(255,255,255,0.18);
+  outline-offset: -6px;
+}
+
+.ticket-card{
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.kds-col.is-over{
+  outline: 2px dashed rgba(255,255,255,0.18);
+  outline-offset: -6px;
+}
+
+/* auth */
+
+/* Chrome, Safari, Edge, Opera uchun */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox uchun */
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.numberinput{
+  border-top-left-radius: 0px !important;
+  border-bottom-left-radius: 0px !important;
+}
+
+/*  */
+
+.order-status{
+  color: #16A34A !important;
+}
+
+/*  */
+
+.pmb{
+  color: #DC2626 !important;
+}
