@@ -1,8 +1,8 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 
-export default function PinAuth({ username }) {
-  const { unlockScreen, logout } = useContext(AuthContext);
+export default function SetPin({ username }) {
+  const { setupPin, logout } = useContext(AuthContext);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -15,27 +15,23 @@ export default function PinAuth({ username }) {
     }
   };
 
-  // O'chirish (Backspace) tugmasi
+  // O'chirish tugmasi
   const handleDelete = () => {
     setPin((prev) => prev.slice(0, -1));
   };
 
-  // Avtomatik tekshirish: PIN 4 ta bo'lishi bilan API ga jo'natadi
-  useEffect(() => {
-    if (pin.length === 4) {
-      verifyPin();
+  // PIN ni saqlash
+  const handleSubmit = async () => {
+    if (pin.length !== 4) {
+      return setError("PIN kod 4 ta raqamdan iborat bo'lishi shart!");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin]);
-
-  const verifyPin = async () => {
+    
     setIsLoading(true);
-    setError("");
-
-    const success = await unlockScreen(pin);
+    const success = await setupPin(pin);
+    
     if (!success) {
-      setError("PIN kod noto'g'ri!");
-      setPin(""); // Xato bo'lsa, qayta terish uchun tozalab tashlaymiz
+      setError("PIN kod o'rnatishda xatolik yuz berdi.");
+      setPin("");
     }
     setIsLoading(false);
   };
@@ -43,9 +39,9 @@ export default function PinAuth({ username }) {
   return (
     <div className="vh-100 d-flex flex-column justify-content-center align-items-center bg-dark text-white">
       <div className="text-center mb-4">
-        <h1 className="mb-2">🔒</h1>
-        <h3>Xush kelibsiz, {username || "Xodim"}!</h3>
-        <p className="text-muted">Ekranni ochish uchun PIN kodni kiriting</p>
+        <h1 className="mb-2">⚙️</h1>
+        <h3>Salom, {username || "Xodim"}!</h3>
+        <p className="text-muted">Tizimga tezkor kirish uchun 4 xonali PIN kod o'rnating</p>
       </div>
 
       <div style={{ width: "100%", maxWidth: "320px" }} className="d-flex flex-column align-items-center">
@@ -74,7 +70,7 @@ export default function PinAuth({ username }) {
             </button>
           ))}
           
-          {/* O'chirish tugmasi */}
+          {/* O'chirish (Backspace) tugmasi */}
           <button 
             type="button" 
             className="btn btn-danger rounded-circle fw-bold" 
@@ -95,16 +91,15 @@ export default function PinAuth({ username }) {
             0
           </button>
           
-          {/* Tasdiqlash tugmasi o'rniga "Tozalash" yoki shunchaki bo'sh joy qoldirish mumkin. 
-              Biz to'g'ridan-to'g'ri tekshirish tugmasini qoldiramiz (xohishga ko'ra bosa oladi) */}
+          {/* Tasdiqlash tugmasi */}
           <button 
             type="button" 
             className="btn btn-success rounded-circle fw-bold" 
             style={{ width: "70px", height: "70px", fontSize: "24px" }} 
-            onClick={verifyPin}
+            onClick={handleSubmit}
             disabled={isLoading || pin.length < 4}
           >
-            {isLoading ? "..." : "✓"}
+            ✓
           </button>
         </div>
 
@@ -112,7 +107,7 @@ export default function PinAuth({ username }) {
           className="btn btn-link text-muted mt-4 text-decoration-none"
           onClick={logout}
         >
-          Boshqa hisobga kirish (Chiqish)
+          Tizimdan chiqish
         </button>
       </div>
     </div>

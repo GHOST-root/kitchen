@@ -1,92 +1,101 @@
 import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
-  const [phoneTail, setPhoneTail] = useState(""); // Faqat 9 ta raqam uchun
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  // username o'rniga phone ishlatamiz
+  const [phone, setPhone] = useState(""); 
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (phoneTail.length !== 9) {
-    alert("Telefon raqamini to'liq kiriting!");
-    return;
-  }
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
 
-  setLoading(true);
-  const fullPhone = "+998" + phoneTail;
+    // login funksiyasiga phone ni beramiz
+    const result = await login(phone, password);
 
-  try {
-    // ❌ fetch(...) ni olib tashlang
-    // ✅ AuthContext'dagi fake loginni chaqiring
-    await login(fullPhone, password); 
-    
-    // Muvaffaqiyatli bo'lsa, AuthContext o'zi sahifani almashtiradi
-  } catch (error) {
-    // Fake login'dan kelgan "Raqam yoki parol xato" xabarini ko'rsatadi
-    alert(error.message); 
-  } finally {
-    setLoading(false);
-  }
-};
+    if (result.success) {
+      switch (result.role) {
+        case "cashier":
+          navigate("/kassa");
+          break;
+        case "waiter":
+          navigate("/ofitsant");
+          break;
+        case "kitchen":
+          navigate("/oshxona");
+          break;
+        default:
+          navigate("/"); 
+      }
+    } else {
+      setError(result.message);
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div className="d-flex align-items-center justify-content-center vh-100 bg-light">
-      <div className="card p-4 shadow-sm" style={{ width: "380px", borderRadius: "20px" }}>
-        <h3 className="text-center fw-bold mb-4">Tizimga kirish</h3>
-        
-        <form onSubmit={handleSubmit}>
-          <div className="mb-3">
-            <label className="form-label small fw-bold">Telefon raqam</label>
-            <div className="input-group">
-              {/* O'zgarmas prefix qismi */}
-              <span className="input-group-text bg-white border-end-0" style={{ borderRadius: "20px 0 0 20px" }}>
-                +998
-              </span>
-  
-              <input
-                type="number"
-                className="form-control numberinput border-start-0 no-spin" // Klass qo'shishingiz ham mumkin
-                style={{ 
-                    borderRadius: "0 20px 20px 0",
-                    boxShadow: "none", // Fokus bo'lgandagi ko'k chiziqni yo'qotish uchun (ixtiyoriy)
-                    outline: "none"
-                }}
-                placeholder="90 123 45 67"
-                value={phoneTail}
-                onInput={(e) => {
-                    // Faqat 9 ta raqam kiritishni ta'minlash
-                    if (e.target.value.length > 9) {
-                    e.target.value = e.target.value.slice(0, 9);
-                    }
-                    setPhoneTail(e.target.value);
-                }}
-                required
-                />
+    <div className="vh-100 d-flex flex-column justify-content-center align-items-center bg-light">
+      <div className="card border-0 shadow-lg p-4" style={{ width: "100%", maxWidth: "400px", borderRadius: "15px" }}>
+        <div className="text-center mb-4">
+          <div className="fs-1 mb-2">🍽️</div>
+          <h3 className="fw-bold text-dark">BAXOR CAFE</h3>
+          <div className="text-muted small">Tizimga kirish</div>
+        </div>
 
-            </div>
+        {error && <div className="alert alert-danger py-2 small fw-bold text-center">{error}</div>}
+
+        <form onSubmit={handleSubmit}>
+          {/* Telefon raqam inputi */}
+          <div className="mb-3">
+            <label className="form-label fw-bold text-secondary">Ism (Login)</label>
+            <input
+              type="text"
+              className="form-control py-2 bg-light border-0"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+998901234567"
+              required
+            />
           </div>
 
           <div className="mb-4">
-            <label className="form-label small fw-bold">Parol</label>
+            <label className="form-label fw-bold text-secondary">Parol</label>
             <input
               type="password"
-              className="form-control rounded-pill"
-              placeholder="••••••"
+              className="form-control py-2 bg-light border-0"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               required
             />
           </div>
 
           <button 
             type="submit" 
-            className="btn btn-primary w-100 rounded-pill py-2 fw-bold"
-            disabled={loading}
+            className="btn btn-success w-100 py-2 fw-bold mb-3" 
+            disabled={isLoading}
+            style={{ borderRadius: "10px" }}
           >
-            {loading ? "Kutilmoqda..." : "Tasdiqlash"}
+            {isLoading ? "Tekshirilmoqda..." : "Kirish"}
           </button>
+
+          <div className="text-center text-muted small">
+            Hisobingiz yo'qmi?{" "}
+            <span 
+              className="text-success fw-bold" 
+              style={{ cursor: "pointer", textDecoration: "underline" }}
+              onClick={() => navigate("/register")}
+            >
+              Ro'yxatdan o'ting
+            </span>
+          </div>
         </form>
       </div>
     </div>

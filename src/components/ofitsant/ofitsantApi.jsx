@@ -1,125 +1,230 @@
-const API_BASE = "https://program90.pythonanywhere.com/api";
+const API_BASE = "https://bilgex.pythonanywhere.com";
 
-async function req(path, { method = "GET", body, signal } = {}) {
+/* ================= CORE REQUEST ================= */
+
+export default async function req(path, { method = "GET", body, signal } = {}) {
+  const token = localStorage.getItem("token");
+
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+
+  if (token) headers["Authorization"] = `Token ${token}`;
+
   const r = await fetch(API_BASE + path, {
     method,
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
 
-  // 204 => no body
   if (r.status === 204) return null;
 
   const text = await r.text().catch(() => "");
-  if (!r.ok) throw new Error(text || `HTTP ${r.status} ${method} ${path}`);
+
+  if (!r.ok) {
+    console.log("❌ BACKEND:", text);
+    throw new Error(text || `HTTP ${r.status}`);
+  }
 
   if (!text) return null;
-  try { return JSON.parse(text); } catch { return text; }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
-// DRF results[] bo‘lsa
+/* ================= HELPERS ================= */
+
 function asList(x) {
   if (Array.isArray(x)) return x;
-  if (x && Array.isArray(x.results)) return x.results;
+  if (x?.results) return x.results;
   return [];
 }
 
-// bir nechta path sinash (xato chiqarmasdan)
-async function tryPaths(paths, make) {
-  let lastErr = null;
-  for (const p of paths) {
-    try { return await make(p); }
-    catch (e) { lastErr = e; }
-  }
-  throw lastErr || new Error("No endpoint matched");
-}
-
-/** ============ PUBLIC API ============ **/
-
-export async function apiGetTables({ signal } = {}) {
-  // Ehtimoliy variantlar (sizning backendga mos keladigani ishlaydi)
-  const paths = ["/tables"];
-  const data = await tryPaths(paths, (p) => req(p, { signal }));
-  const list = asList(data);
-
-  // UI uchun normalize: {id, number, status}
-  return list.map((t, i) => ({
-    id: t.id ?? t.pk ?? i + 1,
-    number: t.number ?? t.table_number ?? t.table ?? t.id ?? (i + 1),
-    status: t.status ?? t.state ?? (t.is_busy ? "Band" : "Bo‘sh"),
-    active_order_id: t.active_order_id ?? t.activeOrderId ?? null,
-  }));
-}
-
-export async function apiGetOrCreateOrderByTable(tableNumber, { signal } = {}) {
-  // 1) agar backendda "cashier/orders?table_number=" bo‘lsa
-  const getPaths = [
-    `/cashier/orders?table_number=${encodeURIComponent(tableNumber)}`,
-    `/orders?table_number=${encodeURIComponent(tableNumber)}`,
-  ];
-
-  try {
-    const data = await tryPaths(getPaths, (p) => req(p, { signal }));
-    const one = Array.isArray(data) ? data[0] : (data?.results?.[0] ?? data);
-    if (one && (one.id || one.pk)) return normalizeOrder(one, tableNumber);
-  } catch (_) {
-    // ignore, create qilamiz
-  }
-
-  // 2) create (POST /orders) yoki /waiter/orders
-  const postPaths = ["/orders", "/waiter/orders"];
-  const created = await tryPaths(postPaths, (p) =>
-    req(p, { method: "POST", body: { table_number: tableNumber }, signal })
-  );
-  return normalizeOrder(created, tableNumber);
-}
-
-export async function apiAddItem(orderId, productId, qty = 1) {
-  const paths = [
-    `/orders/${orderId}/items`,
-    `/orders/${orderId}/add-item`,
-  ];
-  return tryPaths(paths, (p) =>
-    req(p, { method: "POST", body: { product_id: productId, qty } })
-  );
-}
-
-export async function apiSetQty(orderId, productId, qty) {
-  const paths = [
-    `/orders/${orderId}/items`,
-    `/orders/${orderId}/set-qty`,
-  ];
-  return tryPaths(paths, (p) =>
-    req(p, { method: "PATCH", body: { product_id: productId, qty } })
-  );
-}
-
-export async function apiSendToKitchen(orderId) {
-  const paths = [
-    `/orders/${orderId}/send-to-kitchen`,
-    `/orders/${orderId}/send_kitchen`,
-  ];
-  return tryPaths(paths, (p) => req(p, { method: "POST" }));
-}
-
-function normalizeOrder(o, tableNumber) { 
+function normalizeOrder(o, tableNumber) {
   return {
-    id: o.id ?? o.pk,
-    code: o.code ?? o.order_code ?? o.number ?? "—",
-    tableNumber: o.table_number ?? o.table ?? tableNumber,
-    guests: o.guests ?? o.people ?? 1,
+    id: o.id,
+    tableNumber: o.table_number ?? tableNumber,
     items: normalizeItems(o.items ?? o.order_items ?? []),
   };
 }
 
 function normalizeItems(items) {
-  const list = asList(items);
-  return list.map((it) => ({
-    id: it.id ?? it.pk ?? crypto.randomUUID(),
-    productId: it.product_id ?? it.product?.id ?? it.product ?? it.menu_item_id,
-    name: it.name ?? it.product_name ?? it.product?.name ?? "—",
-    price: Number(it.price ?? it.unit_price ?? it.product?.price ?? 0),
-    qty: Number(it.qty ?? it.quantity ?? 1),
+    return asList(items).map((it) => ({
+      id: it.id,
+
+      productId: it.product?.id ?? it.product,
+
+      // 🔥 ENG MUHIM QISM
+      name:
+        it.product_name_snapshot ??
+        it.product?.name ??
+        `#${it.product}`,
+
+      price: Number(it.unit_price ?? it.price ?? 0),
+
+      qty: Number(it.qty ?? it.quantity ?? 1),
+
+      status: it.status,
+    }));
+  }
+
+/* ================= TABLE ================= */
+
+export async function apiGetTables({ signal } = {}) {
+  const data = await req(`/table/table/`, { signal });
+
+  console.log("✅ ASL STOLLAR:", data);
+
+  return asList(data).map((t, i) => ({
+    id: t.id ?? i + 1,
+    number: t.table_number ?? t.name ?? i + 1,
+    status:
+  t.status === "free" ? "Bo‘sh" :
+  t.status === "busy" ? "Band" :
+  t.status === "ready" ? "Tayyor" :
+  t.status === "bill" ? "Hisob" :
+  (t.is_busy ? "Band" : "Bo‘sh"),
   }));
+}
+
+/* ================= ORDER ================= */
+
+/* ================= ORDER ================= */
+
+export async function apiGetOrCreateOrderByTable(tableId, guestsCount = null, { signal } = {}) {
+  // 1) Ochiq buyurtma borligini tekshirish
+  const data = await req(`/order/orders/?table=${tableId}`, { signal });
+  const list = asList(data);
+
+  const open = list.find(o => 
+    o.status !== "closed" && o.status !== "paid" && o.status !== "served"
+  );
+
+  if (!open) {
+    // 🔥 2) Agar yo'q bo'lsa, YANGI ochamiz (guests_count bilan!)
+    const body = { 
+      table: tableId, 
+      type: "dine_in" 
+    };
+
+    if (guestsCount) {
+      body.guests_count = guestsCount;
+    }
+
+    const created = await req(`/order/orders/`, {
+      method: "POST",
+      body: body,
+      signal,
+    });
+
+    // Stolni "Band" qilish (agar backend o'zi qilmasa)
+    await apiSetTableBusy(tableId).catch(() => {});
+
+    return normalizeOrder(created, tableId);
+  }
+
+  // 🔥 3) Ochiq buyurtma bo'lsa, itemlarni olib kelamiz
+  const itemsAll = await req(`/order/order-items/`, { signal });
+  const filtered = asList(itemsAll).filter(x => (x.order?.id ?? x.order) === open.id);
+
+  return normalizeOrder({ ...open, items: filtered }, tableId);
+}
+
+/* ================= ORDER ITEM ================= */
+
+export async function apiAddItem(orderId, productOrId, qty = 1) {
+
+  let product = productOrId;
+
+  // 👉 agar number kelsa — productni backenddan olamiz
+  if (typeof productOrId === "number") {
+    const list = await req(`/table/product/`);
+    product = list.results?.find(p => p.id === productOrId) || list.find?.(p => p.id === productOrId);
+  }
+
+  if (!product) throw new Error("❌ Product topilmadi");
+
+  const price =
+    product.price ??
+    product.selling_price ??
+    product.unit_price ??
+    product.cost;
+
+  if (price == null) {
+    console.log("❌ PRODUCT:", product);
+    throw new Error("❌ Productda price yo‘q");
+  }
+
+  const body = {
+    order: Number(orderId),
+    product: Number(product.id),
+    quantity: Number(qty),
+    unit_price: Number(price),
+  };
+
+  console.log("📦 BODY:", body);
+
+  return req(`/order/order-items/`, {
+    method: "POST",
+    body,
+  });
+}
+
+export async function apiSetQty(itemId, qty) {
+  return req(`/order/order-items/${itemId}/`, {
+    method: "PATCH",
+    body: { quantity: Number(qty) },
+  });
+}
+
+// top helper: table id topish
+async function findTableByNumber(tableNumber, { signal } = {}) {
+  const data = await req("/table/table/", { signal });
+  const list = asList(data);
+
+  // backend may return fields: table_number, name, id
+  return list.find(t =>
+    String(t.table_number) === String(tableNumber) ||
+    String(t.name) === String(tableNumber) ||
+    String(t.number) === String(tableNumber) || // if you normalized as `number`
+    String(t.id) === String(tableNumber)
+  );
+}
+
+// apiSetTableBusy: tableNumber qabul qiladi, avval id ni topadi, keyin patch qiladi
+export async function apiSetTableBusy(tableNumber) {
+  const data = await req("/table/table/");
+  const list = asList(data);
+
+  const found = list.find(t =>
+    String(t.table_number) === String(tableNumber) ||
+    String(t.name) === String(tableNumber) ||
+    String(t.number) === String(tableNumber)
+  );
+
+  if (!found) return;
+
+  await req(`/table/table/${found.id}/`, {
+    method: "PATCH",
+    body: { is_busy: true } // backendga mos
+  });
+}
+
+/* ================= SEND TO KITCHEN ================= */
+
+export async function apiSendToKitchen(order){
+  if (!order) return;
+
+  try {
+    await req(`/order/orders/${order.id}/send_to_kitchen/`, {
+      method: "POST",
+    });
+  } catch {
+    console.log("⚠️ already sent");
+  }
 }

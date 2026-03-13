@@ -112,7 +112,7 @@ export default function KitchenBoard({ branchId = 1 }) {
 
     try {
       // Backendga yuborish
-      await apiSetKitchenTicketStatus(ticketId, nextStatus);
+      await apiSetKitchenTicketStatus(ticket, nextStatus);
 
       // UI ni darhol o'zgartirish
       setTickets((prev) => {

@@ -1,12 +1,8 @@
-export const ORIGIN = "https://program90.pythonanywhere.com";
-export const API_BASE = `${ORIGIN}/api`;
+export const ORIGIN = "https://bilgex.pythonanywhere.com";
+export const API_BASE = `${ORIGIN}`;
 
 function parseJsonSafe(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 function getErrorMessage(data, status) {
@@ -21,30 +17,19 @@ function getErrorMessage(data, status) {
 
 async function request(path, { method = "GET", body, signal } = {}) {
   const url = `${API_BASE}${path}`;
-
-  console.groupCollapsed(`🌐 ${method} ${url}`);
-  if (body !== undefined) console.log("request body:", body);
+  const token = localStorage.getItem("token");
 
   try {
-    const options = {
-      method,
-      headers: {
-        Accept: "application/json",
-      },
-      signal,
-    };
+    const headers = { Accept: "application/json" };
+    if (token) headers["Authorization"] = `Token ${token}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
 
-    if (body !== undefined) {
-      options.headers["Content-Type"] = "application/json";
-      options.body = JSON.stringify(body);
-    }
+    const options = { method, headers, signal };
+    if (body !== undefined) options.body = JSON.stringify(body);
 
     const res = await fetch(url, options);
     const text = await res.text().catch(() => "");
     const data = text ? parseJsonSafe(text) : null;
-
-    console.log("status:", res.status);
-    console.log("response:", data);
 
     if (!res.ok) {
       const error = new Error(getErrorMessage(data, res.status));
@@ -55,14 +40,9 @@ async function request(path, { method = "GET", body, signal } = {}) {
 
     return data;
   } catch (e) {
-    if (e?.name === "AbortError") {
-      console.warn("⏹️ aborted:", url);
-      throw e;
-    }
+    if (e?.name === "AbortError") throw e;
     console.error("❌ request failed:", e?.message || e);
     throw e;
-  } finally {
-    console.groupEnd();
   }
 }
 
@@ -72,69 +52,99 @@ export function normalizeList(x) {
   return [];
 }
 
-export async function apiGetKitchenTickets({
-  branchId = 1,
-  statuses = ["NEW", "COOKING", "READY"],
-  signal,
-} = {}) {
-  const status = encodeURIComponent(statuses.join(","));
-  return await request(
-    `/kitchen-tickets/?branch_id=${branchId}&status=${status}`,
-    { method: "GET", signal }
-  );
+// 1. BUYURTMALARNI OLISH
+export async function apiGetKitchenTickets({ branchId = 1, signal } = {}) {
+  const data = await request(`/order/orders/`, { method: "GET", signal });
+  let list = normalizeList(data);
+  
+  // Faqat oshxonaga tegishli va hali yopilmagan (closed) bo'lmagan buyurtmalarni ajratamiz
+  // Va statuslarini daskamiz tushunadigan 'NEW', 'COOKING', 'READY' ga o'zgartirib qaytaramiz
+  return list
+    .filter(order => order.status !== "closed" && order.status !== "paid" && order.status !== "served")
+    .map(order => ({
+      ...order,
+      // Statusni tarjima qilamiz
+      status: mapStatusToFrontend(order.status), 
+      // Daskada stol raqami chiqishi uchun
+      table_number: order.table?.number || order.table || order.number 
+    }));
 }
 
+// 2. BUYURTMA ICHIDAGI TAOMLARNI OLISH
 export async function apiGetKitchenTicketItems({ ticketId, signal } = {}) {
   if (!ticketId) return [];
 
-  try {
-    const data = await request(
-      `/kitchen-ticket-items/?ticket=${encodeURIComponent(ticketId)}`,
-      { method: "GET", signal }
-    );
-    return normalizeList(data);
-  } catch (e) {
-    if (e?.name === "AbortError") throw e;
-    console.warn("⚠️ ?ticket= filter ishlamadi, fallback all list");
-  }
-
-  const all = await request(`/kitchen-ticket-items/`, {
-    method: "GET",
-    signal,
-  });
-
-  const list = normalizeList(all);
-
-  return list.filter((item) => {
-    const v =
-      item.ticket ??
-      item.kitchen_ticket ??
-      item.ticket_id ??
-      item.kitchen_ticket_id;
-    return String(v) === String(ticketId);
-  });
+  const data = await request(`/order/order-items/`, { method: "GET", signal });
+  const list = normalizeList(data);
+  
+  // order id ga qarab filtrlaymiz
+  return list.filter((item) => String(item.order) === String(ticketId));
 }
 
-/**
- * ENG MUHIM FUNKSIYA
- * Card ko‘chganda backend statusni o‘zgartiradi.
- */
-export async function apiSetKitchenTicketStatus(ticketId, status) {
-  return await request(`/kitchen-tickets/${ticketId}/`, {
-    method: "PATCH",
-    body: { status },
-  });
+// 3. STATUSNI O'ZGARTIRISH (Backend'ga yuborish)
+// 3. STATUSNI O'ZGARTIRISH (Backend'ga yuborish)
+export async function apiSetKitchenTicketStatus(ticket, frontendStatus) {
+  // Endi funksiya shunchaki id emas, butun ticket (buyurtma) obyektini qabul qiladi
+  const ticketId = ticket.id;
+
+  if (frontendStatus === "READY") {
+    // Tayyor qilish uchun mark_ready ishlatiladi
+    return await request(`/order/orders/${ticketId}/mark_ready/`, { method: "POST" });
+  } 
+  else if (frontendStatus === "COOKING") {
+    // "Tayyorlanmoqda" uchun tayyorgarlik
+    // Eslatma: Backend aynan "cooking" yoki "preparing" degan so'zni kutayotgan bo'lishi mumkin. 
+    // Hozircha "cooking" deb yuboramiz.
+    const payload = { status: "cooking" }; 
+
+    // 🔥 XATONI AYLANIB O'TISh UCHUN YAMOQ:
+    // Agar buyurtma dine_in bo'lsa-yu, stoli belgilanmagan bo'lsa, backend xato bermasligi uchun 1-stolni yuboramiz
+    if (ticket.type === "dine_in" && !ticket.table) {
+      payload.table = 1; 
+    }
+
+    return await request(`/order/orders/${ticketId}/`, {
+      method: "PATCH",
+      body: payload, 
+    });
+  }
 }
 
 export function itemToText(item) {
   const name =
-    item.name ||
-    item.title ||
     item.product_name ||
     item.product?.name ||
-    "Item";
+    item.name ||
+    item.title ||
+    "Taom";
 
-  const qty = item.qty ?? item.quantity ?? item.count ?? 1;
+  const qty = item.quantity ?? item.qty ?? item.count ?? 1;
 
   return `${name} x${qty}`;
+}
+
+// ==========================================
+// STATUSLARNI TARJIMA QILISH (BACKEND <-> FRONTEND)
+// ==========================================
+function mapStatusToFrontend(backendStatus) {
+  if (!backendStatus) return "NEW";
+  
+  const s = backendStatus.toLowerCase(); // Kichik harflarga o'tkazib olamiz
+
+  // "YANGI" ustuniga tushishi kerak bo'lgan barcha statuslar (Backend nima jo'natsa ham tutib oladi):
+  if (s === "sent_to_kitchen" || s === "new" || s === "open" || s === "pending") {
+    return "NEW";
+  }
+  
+  // "TAYYORLANMOQDA" ustuniga tushadiganlar:
+  if (s === "cooking" || s === "in_progress") {
+    return "COOKING";
+  }
+  
+  // "TAYYOR" ustuniga tushadiganlar:
+  if (s === "ready") {
+    return "READY";
+  }
+
+  return backendStatus; 
 }
