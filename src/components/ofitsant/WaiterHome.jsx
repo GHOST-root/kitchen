@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useContext } from "react";
-import AppHeader from "./AppHeader.jsx";
 import TableCard from "./TableCard.jsx";
 import { apiGetTables } from "./ofitsantApi.jsx";
 import { AuthContext } from "../../context/AuthContext.jsx";
@@ -10,34 +9,26 @@ export default function WaiterHome({ onOpenTable }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   
-  // Qidiruv va filtr uchun
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("Hammasi");
 
-  // --- Modal uchun state'lar ---
-  const [selectedTable, setSelectedTable] = useState(null); // Qaysi stol bosildi?
-  const [guestsCount, setGuestsCount] = useState(1);        // Mehmonlar soni
+  const [selectedTable, setSelectedTable] = useState(null); 
+  const [guestsCount, setGuestsCount] = useState(1);        
 
-  // Qidiruv va filtr orqali stollarni ajratish
   const visible = useMemo(() => {
     const s = q.trim().toLowerCase();
     return tables
       .filter(t => filter === "Hammasi" ? true : t.status === filter)
-      .filter(t => !s ? true : String(t.number).includes(s));
+      .filter(t => !s ? true : String(t.number).toLowerCase().includes(s));
   }, [tables, q, filter]);
 
-  // Stollarni backenddan yuklash funksiyasi
   function loadTables(signal) {
     apiGetTables({ signal })
-      .then((list) => { 
-        setTables(list); 
-        setErr(""); 
-      })
+      .then((list) => { setTables(list); setErr(""); })
       .catch((e) => setErr(String(e.message || e)))
       .finally(() => setLoading(false));
   }
 
-  // Birinchi marta sahifa ochilganda stollarni yuklash
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
@@ -45,91 +36,85 @@ export default function WaiterHome({ onOpenTable }) {
     return () => ac.abort();
   }, []);
 
-  // Boshqa sahifalardan "tables-refresh" signali kelganda stollarni yangilash
   useEffect(() => {
     window.addEventListener("tables-refresh", loadTables);
     return () => window.removeEventListener("tables-refresh", loadTables);
   }, []);
 
-  // --- Stol bosilganda ishlaydigan mantiq ---
   const handleTableClick = (t) => {
     if (t.status === "Bo‘sh") {
-      // Agar bo'sh bo'lsa, mehmonlar sonini so'rash uchun modalni ochamiz
       setSelectedTable(t);
-      setGuestsCount(1); // Standart holatda 1 kishi
+      setGuestsCount(1); 
     } else {
-      // Agar band yoki boshqa statusda bo'lsa, to'g'ridan-to'g'ri menyuga kiramiz (mehmonsiz)
       onOpenTable({ id: t.id, number: t.number, guestsCount: null });
     }
   };
 
-  // Modalda "Tasdiqlash" bosilganda
   const handleConfirmGuests = () => {
     if (selectedTable) {
-      onOpenTable({ 
-        id: selectedTable.id, 
-        number: selectedTable.number, 
-        guestsCount: guestsCount 
-      });
-      setSelectedTable(null); // Modalni yopamiz
+      onOpenTable({ id: selectedTable.id, number: selectedTable.number, guestsCount: guestsCount });
+      setSelectedTable(null); 
     }
   };
 
   return (
-    <div className="page position-relative">
-      <AppHeader />
-
-      {/* Yuqori qism: Logo va Profil */}
-      <div className="d-flex justify-content-between align-items-center p-3 bg-white shadow-sm mb-3">
-         <h4 className="m-0 text-primary fw-bold">BAHOR CAFE</h4>
-         <div className="d-flex align-items-center gap-3">
-            <span className="fw-bold text-muted">{user?.username || "Ofitsiant"}</span>
-            <button className="btn btn-sm btn-danger" onClick={logout}>Chiqish</button>
+    <div className="ofitsant-page-wrapper">
+      
+      {/* 1. YANGI, TOZA HEADER (<AppHeader /> o'rniga) */}
+      <div className="bg-white shadow-sm mb-4 border-bottom">
+         <div className="container-fluid py-3 d-flex justify-content-between align-items-center">
+            <h4 className="m-0 text-primary fw-bold" style={{ letterSpacing: "1px" }}>BAHOR CAFE</h4>
+            <div className="d-flex align-items-center gap-3">
+               <div className="d-none d-sm-block text-end pe-3 border-end">
+                 <div className="text-muted" style={{ fontSize: "11px", fontWeight: "bold", textTransform: "uppercase" }}>Ofitsiant</div>
+                 <div className="fw-bold text-dark">{user?.username || user?.name || "Kiritilmagan"}</div>
+               </div>
+               <button className="btn btn-danger fw-bold rounded-pill px-4 shadow-sm" onClick={logout}>Chiqish</button>
+            </div>
          </div>
       </div>
 
-      <div className="page-body container-fluid py-3">
-        <div className="cardx p-3 mb-3">
-          <div className="row g-2 align-items-center">
+      <div className="container-fluid pb-5">
+        
+        {/* 2. ZAMONAVIY QIDIRUV VA FILTR PANELI */}
+        <div className="cardx p-2 p-md-3 mb-4 border-0" style={{ background: "#ffffff" }}>
+          <div className="row g-3 align-items-center">
             
-            {/* Qidiruv qismi */}
-            <div className="col-12 col-md-6">
-              <div className="smallx muted mb-1">Qidiruv</div>
-              <div className="input-group">
-                <input
-                  className="form-control inputx"
-                  placeholder="Stol raqami..."
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-                <button className="btn btn-outline-secondary" type="button">🔎</button>
-              </div>
+            {/* Qidiruv */}
+            <div className="col-12 col-md-5 col-lg-4">
+              <input
+                className="form-control inputx w-100"
+                placeholder="🔍 Stol raqami yoki nomi..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                style={{ borderRadius: "100px", paddingLeft: "20px" }}
+              />
             </div>
 
-            {/* Filtr qismi */}
-            <div className="col-12 col-md-6">
-              <div className="smallx muted mb-1">Filtr</div>
-              <div className="d-flex flex-wrap gap-2">
-                {["Hammasi", "Bo‘sh", "Band", "Tayyor", "Hisob"].map(x => (
-                  <button
-                    key={x}
-                    className={"chip " + (filter === x ? "chip-busy" : "chip-empty")}
-                    onClick={() => setFilter(x)}
-                    type="button"
-                  >
-                    {x}
-                  </button>
-                ))}
-              </div>
+            {/* Filtr tugmalari */}
+            <div className="col-12 col-md-7 col-lg-8">
+               <div className="d-flex flex-wrap gap-2 align-items-center justify-content-md-end">
+                  <span className="text-muted small fw-bold me-2 d-none d-lg-block">FILTR:</span>
+                  {["Hammasi", "Bo‘sh", "Band", "Tayyor", "Hisob"].map(x => (
+                    <button
+                      key={x}
+                      className={`filter-chip ${filter === x ? 'active' : ''}`}
+                      onClick={() => setFilter(x)}
+                      type="button"
+                    >
+                      {x}
+                    </button>
+                  ))}
+               </div>
             </div>
           </div>
-
-          {loading ? <div className="smallx muted mt-2">Stollar yuklanmoqda…</div> : null}
-          {err ? <div className="smallx mt-2" style={{ color: "var(--danger)" }}>{err}</div> : null}
         </div>
 
-        {/* Stollar ro'yxati */}
-        <div className="row g-3">
+        {loading && <div className="text-center text-muted fw-bold my-5">Yuklanmoqda...</div>}
+        {err && <div className="alert alert-danger shadow-sm border-0 fw-bold">{err}</div>}
+
+        {/* 3. STOLLAR RO'YXATI */}
+        <div className="row g-3 g-md-4">
           {visible.map(t => (
             <div key={t.id} className="col-6 col-sm-4 col-md-3 col-lg-2">
               <TableCard
@@ -142,45 +127,25 @@ export default function WaiterHome({ onOpenTable }) {
         </div>
       </div>
 
-      {/* --- MEHMONLAR SONINI SO'RASH MODALI --- */}
+      {/* MODAL */}
       {selectedTable && (
-        <div 
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" 
-          style={{ backgroundColor: "rgba(0,0,0,0.5)", zIndex: 1050 }}
-        >
-          <div className="bg-white p-4 rounded shadow-lg" style={{ width: "320px" }}>
-            <div className="text-center mb-3">
-              <div className="fs-1">👥</div>
-              <h4 className="fw-bold mt-2">Stol {selectedTable.number}</h4>
-              <p className="text-muted small">Mehmonlar sonini belgilang:</p>
+        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style={{ backgroundColor: "rgba(15, 23, 42, 0.6)", zIndex: 1050, backdropFilter: "blur(4px)" }}>
+          <div className="bg-white p-4 rounded-4 shadow-lg scale-in" style={{ width: "320px", border: "1px solid #e2e8f0" }}>
+            <div className="text-center mb-4">
+              <div className="fs-1 mb-2">👥</div>
+              <h4 className="fw-bold m-0 text-dark">Stol {String(selectedTable.number).replace(/stol/i, "").trim()}</h4>
+              <p className="text-muted small mt-1">Mehmonlar sonini belgilang:</p>
             </div>
             
             <div className="d-flex justify-content-center align-items-center mb-4 gap-4">
-              <button 
-                className="btn btn-outline-danger rounded-circle fw-bold d-flex justify-content-center align-items-center" 
-                style={{ width: "50px", height: "50px", fontSize: "24px" }}
-                onClick={() => setGuestsCount(prev => Math.max(1, prev - 1))}
-              >−</button>
-              
-              <span className="fs-1 fw-bold text-dark">{guestsCount}</span>
-              
-              <button 
-                className="btn btn-outline-success rounded-circle fw-bold d-flex justify-content-center align-items-center" 
-                style={{ width: "50px", height: "50px", fontSize: "24px" }}
-                onClick={() => setGuestsCount(prev => prev + 1)}
-              >+</button>
+              <button className="btn btn-light border rounded-circle fw-bold text-danger shadow-sm d-flex justify-content-center align-items-center" style={{ width: "50px", height: "50px", fontSize: "24px" }} onClick={() => setGuestsCount(prev => Math.max(1, prev - 1))}>−</button>
+              <span className="fs-1 fw-bold text-primary">{guestsCount}</span>
+              <button className="btn btn-light border rounded-circle fw-bold text-success shadow-sm d-flex justify-content-center align-items-center" style={{ width: "50px", height: "50px", fontSize: "24px" }} onClick={() => setGuestsCount(prev => prev + 1)}>+</button>
             </div>
 
-            <div className="d-flex gap-2">
-              <button 
-                className="btn btn-light flex-grow-1 py-2 fw-bold" 
-                onClick={() => setSelectedTable(null)}
-              >Bekor qilish</button>
-              
-              <button 
-                className="btn btn-primary flex-grow-1 py-2 fw-bold" 
-                onClick={handleConfirmGuests}
-              >Tasdiqlash</button>
+            <div className="d-flex gap-2 mt-2">
+              <button className="btn btn-light border flex-grow-1 py-2 fw-bold text-muted rounded-pill" onClick={() => setSelectedTable(null)}>Bekor qilish</button>
+              <button className="btn btn-primaryx flex-grow-1 py-2 fw-bold rounded-pill" onClick={handleConfirmGuests}>Tasdiqlash</button>
             </div>
           </div>
         </div>

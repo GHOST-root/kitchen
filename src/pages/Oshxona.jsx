@@ -33,15 +33,15 @@ export default function Oshxona() {
         {/* O'ng tomon: Vaqt va Chiqish tugmasi */}
         <div className="d-flex align-items-center gap-4">
           <div className="text-end">
-            <div style={{ fontSize: 14, color: "var(--text2)" }}>Sinx: <b className="text-success">Live</b></div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>
+            <div style={{ fontSize: 14, color: "var(--surface)" }}>Sinx: <b className="text-success">Live</b></div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--surface)" }}>
               {timeStr}
             </div>
           </div>
 
           {/* Profil va Chiqish qismi */}
           <div className="d-flex align-items-center gap-3 border-start ps-4" style={{ borderColor: "var(--border)" }}>
-            <span className="fw-bold" style={{ color: "var(--text)", fontSize: 16 }}>
+            <span className="fw-bold" style={{ color: "var(--surface)", fontSize: 16 }}>
               {user?.username || user?.name || "Oshpaz"}
             </span>
             <button 

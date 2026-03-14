@@ -3,7 +3,7 @@ import React, { useMemo } from "react";
 export default function HeaderBar(props) {
   // Eski loyihalardagi turli prop nomlarini ham ushlab olamiz
   const branch = props.branch ?? props.filial ?? props.filialId ?? 1;
-  const cashier = props.cashier ?? props.cashierName ?? props.kassir ?? "Ali";
+  const cashier = props.cashier ?? props.cashierName ?? props.kassir ?? "Bahodirjon";
   const shiftLabel = props.shiftLabel ?? props.shift ?? props.smena ?? "Ochiq";
 
   const isLive =

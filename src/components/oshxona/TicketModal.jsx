@@ -11,35 +11,39 @@ export default function TicketModal({ open, ticket, itemsText, onClose }) {
         role="dialog"
         aria-modal="true"
       >
-        <h3>Ticket #{ticket.id}</h3>
+        <h3 className="fw-bold text-primary">Buyurtma #{ticket.id}</h3>
 
-        <div className="meta">
-          Stol: {ticket.table_number_snapshot || ticket.table_number || "?"} •
-          Status: {ticket.status}
+        <div className="meta mb-3 border-bottom pb-2">
+          <span className="fw-bold">Stol:</span> {ticket.table_number_snapshot || ticket.table_number || "?"} &nbsp; | &nbsp;
+          <span className="fw-bold">Status:</span> {ticket.status}
         </div>
 
         <div style={{ marginTop: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Itemlar</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#475569" }}>Buyurtma qilingan taomlar:</div>
 
-          <ul
-            style={{
-              margin: "6px 0 0",
-              paddingLeft: 18,
-              color: "var(--text2)",
-              fontSize: 14,
-            }}
-          >
+          {/* 🔥 MANA SHU YER HAM TO'G'RILANDI */}
+          <ul className="list-unstyled mt-2">
             {itemsText?.length ? (
-              itemsText.map((x, i) => <li key={i}>{x}</li>)
+              itemsText.map((item, i) => (
+                <li key={item.id || i} className="mb-2 bg-light p-2 rounded border">
+                  <div className="d-flex align-items-start gap-2">
+                    <span className="badge bg-primary fs-6">{item.qty}x</span>
+                    <div>
+                      <div className="fw-bold fs-6">{item.name}</div>
+                      {item.note && <div className="text-muted mt-1" style={{ fontSize: "13px", fontStyle: "italic" }}>✍️ Izoh: {item.note}</div>}
+                    </div>
+                  </div>
+                </li>
+              ))
             ) : (
-              <li>(itemlar yo‘q)</li>
+              <li className="text-muted">(Taomlar yo‘q)</li>
             )}
           </ul>
         </div>
 
-        <div className="close-row">
-          <button type="button" className="kds-btn" onClick={onClose}>
-            ORTGA
+        <div className="close-row mt-4">
+          <button type="button" className="btn btn-secondary w-100 fw-bold py-2" onClick={onClose}>
+            YOPISH
           </button>
         </div>
       </div>

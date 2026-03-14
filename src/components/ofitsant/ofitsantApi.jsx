@@ -49,47 +49,58 @@ function normalizeOrder(o, tableNumber) {
   return {
     id: o.id,
     tableNumber: o.table_number ?? tableNumber,
+    guestsCount: o.guests_count ?? o.guests ?? 1, // 🔥 Shu qatorni qo'shing
+    code: o.number ?? o.id,
     items: normalizeItems(o.items ?? o.order_items ?? []),
   };
+}
+
+export async function apiUpdateOrderGuests(orderId, guestsCount) {
+  return req(`/order/orders/${orderId}/`, {
+    method: "PATCH",
+    body: { guests_count: Number(guestsCount) }
+  });
 }
 
 function normalizeItems(items) {
     return asList(items).map((it) => ({
       id: it.id,
-
       productId: it.product?.id ?? it.product,
-
-      // 🔥 ENG MUHIM QISM
+      
+      // Taom nomi (Oshxona va Ofitsiant uchun to'g'rilangan variant)
       name:
+        it.kitchen_name_snapshot ??
         it.product_name_snapshot ??
         it.product?.name ??
         `#${it.product}`,
 
       price: Number(it.unit_price ?? it.price ?? 0),
-
-      qty: Number(it.qty ?? it.quantity ?? 1),
-
-      status: it.status,
+      qty: Number(it.qty ?? it.quantity ?? 1)
+      
+      // 🔥 status: it.status qatori butunlay o'chirib tashlandi!
     }));
-  }
+}
 
 /* ================= TABLE ================= */
 
+// 1. apiGetTables ni quyidagiga almashtiring (Filtrlar muammosiz ishlashi uchun)
 export async function apiGetTables({ signal } = {}) {
   const data = await req(`/table/table/`, { signal });
 
-  console.log("✅ ASL STOLLAR:", data);
+  return asList(data).map((t, i) => {
+    let st = "Bo‘sh";
+    const s = String(t.status).toLowerCase();
+    
+    if (s === "busy" || t.is_busy) st = "Band";
+    else if (s === "ready") st = "Tayyor";
+    else if (s === "bill") st = "Hisob";
 
-  return asList(data).map((t, i) => ({
-    id: t.id ?? i + 1,
-    number: t.table_number ?? t.name ?? i + 1,
-    status:
-  t.status === "free" ? "Bo‘sh" :
-  t.status === "busy" ? "Band" :
-  t.status === "ready" ? "Tayyor" :
-  t.status === "bill" ? "Hisob" :
-  (t.is_busy ? "Band" : "Bo‘sh"),
-  }));
+    return {
+      id: t.id ?? i + 1,
+      number: t.table_number ?? t.name ?? i + 1,
+      status: st, // Endi doim aniq o'zbekcha status qaytadi
+    };
+  });
 }
 
 /* ================= ORDER ================= */
@@ -138,47 +149,33 @@ export async function apiGetOrCreateOrderByTable(tableId, guestsCount = null, { 
 /* ================= ORDER ITEM ================= */
 
 export async function apiAddItem(orderId, productOrId, qty = 1) {
-
   let product = productOrId;
-
-  // 👉 agar number kelsa — productni backenddan olamiz
   if (typeof productOrId === "number") {
     const list = await req(`/table/product/`);
     product = list.results?.find(p => p.id === productOrId) || list.find?.(p => p.id === productOrId);
   }
-
   if (!product) throw new Error("❌ Product topilmadi");
 
-  const price =
-    product.price ??
-    product.selling_price ??
-    product.unit_price ??
-    product.cost;
-
-  if (price == null) {
-    console.log("❌ PRODUCT:", product);
-    throw new Error("❌ Productda price yo‘q");
-  }
+  const price = product.price ?? product.selling_price ?? product.unit_price ?? product.cost;
 
   const body = {
     order: Number(orderId),
     product: Number(product.id),
-    quantity: Number(qty),
+    qty: Number(qty),          // 🔥 Ikkala variantda ham jo'natamiz
+    quantity: Number(qty),     // 🔥 Backend qaysi birini o'qisa ham ishlayveradi
     unit_price: Number(price),
   };
 
-  console.log("📦 BODY:", body);
-
-  return req(`/order/order-items/`, {
-    method: "POST",
-    body,
-  });
+  return req(`/order/order-items/`, { method: "POST", body });
 }
 
 export async function apiSetQty(itemId, qty) {
   return req(`/order/order-items/${itemId}/`, {
     method: "PATCH",
-    body: { quantity: Number(qty) },
+    body: { 
+      qty: Number(qty),       // 🔥 + va - tugmalari bosilganda ham
+      quantity: Number(qty)   // 🔥 Ikkalasini yuboramiz
+    },
   });
 }
 
@@ -204,14 +201,15 @@ export async function apiSetTableBusy(tableNumber) {
   const found = list.find(t =>
     String(t.table_number) === String(tableNumber) ||
     String(t.name) === String(tableNumber) ||
-    String(t.number) === String(tableNumber)
+    String(t.number) === String(tableNumber) ||
+    String(t.id) === String(tableNumber)
   );
 
   if (!found) return;
 
   await req(`/table/table/${found.id}/`, {
     method: "PATCH",
-    body: { is_busy: true } // backendga mos
+    body: { status: "busy", is_busy: true } // 🔥 Ham status, ham is_busy o'zgaradi
   });
 }
 

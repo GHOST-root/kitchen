@@ -53,21 +53,43 @@ export function normalizeList(x) {
 }
 
 // 1. BUYURTMALARNI OLISH
-export async function apiGetKitchenTickets({ branchId = 1, signal } = {}) {
-  const data = await request(`/order/orders/`, { method: "GET", signal });
-  let list = normalizeList(data);
-  
-  // Faqat oshxonaga tegishli va hali yopilmagan (closed) bo'lmagan buyurtmalarni ajratamiz
-  // Va statuslarini daskamiz tushunadigan 'NEW', 'COOKING', 'READY' ga o'zgartirib qaytaramiz
-  return list
-    .filter(order => order.status !== "closed" && order.status !== "paid" && order.status !== "served")
-    .map(order => ({
-      ...order,
-      // Statusni tarjima qilamiz
-      status: mapStatusToFrontend(order.status), 
-      // Daskada stol raqami chiqishi uchun
-      table_number: order.table?.number || order.table || order.number 
-    }));
+export async function apiGetKitchenOrders({ signal } = {}) {
+  try {
+    const data = await request(`/order/orders/`, { method: "GET", signal });
+    let list = Array.isArray(data) ? data : (data?.results || []);
+    
+    console.log("🔥 BACKENDDAN KELDI:", list);
+
+    const filteredList = list
+      .filter(o => 
+        o.status === "sent_to_kitchen" || 
+        o.status === "cooking" ||    // 🔥 XATO SHU YERDA EDI: "preparing" o'rniga "cooking" bo'lishi kerak!
+        o.status === "ready"
+      )
+      .map(o => ({
+        id: o.id,
+        table_number: o.table?.number || o.table || o.number || "?",
+        status: mapOrderStatusToFrontend(o.status),
+        created_at: o.created_at || o.updated_at, 
+        
+        items: (o.items || o.order_items || []).map(it => ({
+          id: it.id,
+          productId: it.product?.id || it.product,
+          name: it.kitchen_name_snapshot || it.product_name_snapshot || it.product?.name || "Nomsiz taom",
+          qty: Number(it.quantity || it.qty || 1),
+          note: it.note || ""
+        }))
+      }));
+
+    console.log("✅ EKRANGA CHIQYAPTI:", filteredList);
+
+    return filteredList;
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("❌ OSHXONA API XATOSI:", err);
+    }
+    return [];
+  }
 }
 
 // 2. BUYURTMA ICHIDAGI TAOMLARNI OLISH
@@ -110,41 +132,68 @@ export async function apiSetKitchenTicketStatus(ticket, frontendStatus) {
   }
 }
 
+// --- TAOM NOMLARINI EKRANGA CHIQARISH ---
 export function itemToText(item) {
+  // Swagger'ga asoslanib backend yuborayotgan aniq nomlarni tutib olamiz
   const name =
+    item.kitchen_name_snapshot || // Agar oshxona uchun qisqartirilgan nom bo'lsa
+    item.product_name_snapshot || // Asosiy taom nomi
+    item.product?.name ||         // Agar product obyekti ichida kelsa
     item.product_name ||
-    item.product?.name ||
     item.name ||
     item.title ||
-    "Taom";
+    `Noma'lum taom (ID: ${item.product || '?'})`; // Mabodo nom topilmasa ID sini ko'rsatamiz
 
+  // Miqdorini aniqlaymiz
   const qty = item.quantity ?? item.qty ?? item.count ?? 1;
 
-  return `${name} x${qty}`;
+  // Agar ofitsiant izoh (note) yozgan bo'lsa (masalan: "achchiq bo'lmasin"), oshxonaga ko'rinishi uchun qo'shamiz
+  const note = item.note ? `\n ✍️ Izoh: ${item.note}` : "";
+
+  return `${name} x${qty}${note}`;
 }
 
 // ==========================================
 // STATUSLARNI TARJIMA QILISH (BACKEND <-> FRONTEND)
 // ==========================================
-function mapStatusToFrontend(backendStatus) {
-  if (!backendStatus) return "NEW";
-  
-  const s = backendStatus.toLowerCase(); // Kichik harflarga o'tkazib olamiz
+export function mapOrderStatusToFrontend(status) {
+  if (status === "sent_to_kitchen") return "Yangi";
+  // 🔥 XATO YECHIMI: Backenddan "cooking" keladi
+  if (status === "cooking") return "Tayyorlanmoqda"; 
+  if (status === "ready") return "Tayyor";
+  return "Yangi";
+}
 
-  // "YANGI" ustuniga tushishi kerak bo'lgan barcha statuslar (Backend nima jo'natsa ham tutib oladi):
-  if (s === "sent_to_kitchen" || s === "new" || s === "open" || s === "pending") {
-    return "NEW";
-  }
-  
-  // "TAYYORLANMOQDA" ustuniga tushadiganlar:
-  if (s === "cooking" || s === "in_progress") {
-    return "COOKING";
-  }
-  
-  // "TAYYOR" ustuniga tushadiganlar:
-  if (s === "ready") {
-    return "READY";
+export function mapFrontendToOrderStatus(frontStatus) {
+  const s = String(frontStatus).toLowerCase();
+  if (s === "yangi") return "sent_to_kitchen";
+  // 🔥 XATO YECHIMI: Backendga "cooking" jo'natamiz
+  if (s === "tayyorlanmoqda") return "cooking"; 
+  if (s === "tayyor") return "ready";
+  return "sent_to_kitchen";
+}
+
+// BUYURTMA STATUSINI O'ZGARTIRISH (YANGI -> TAYYORLANMOQDA -> TAYYOR -> DONE)
+export async function apiSetOrderStatus(orderId, newFrontStatus) {
+  // 🔥 OSHXONADAN BUTUNLAY TOZALASH (Tayyordan keyin bosilganda)
+  if (newFrontStatus === "DONE") {
+    return request(`/order/orders/${orderId}/mark_served/`, { 
+      method: "POST" 
+    });
   }
 
-  return backendStatus; 
+  const backendStatus = mapFrontendToOrderStatus(newFrontStatus);
+  
+  // Tayyor holatiga o'tkazish uchun
+  if (backendStatus === "ready") {
+    return request(`/order/orders/${orderId}/mark_ready/`, {
+      method: "POST"
+    });
+  }
+
+  // Qolgan oddiy holatlar uchun (Yangi, Tayyorlanmoqda)
+  return request(`/order/orders/${orderId}/`, {
+    method: "PATCH",
+    body: { status: backendStatus }
+  });
 }

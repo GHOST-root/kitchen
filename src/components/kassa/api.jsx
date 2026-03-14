@@ -1,6 +1,7 @@
 import { logError } from "./errorHandler.jsx";
 
-const API_BASE = "https://program90.pythonanywhere.com/api";
+const API_BASE = "https://bilgex.pythonanywhere.com";
+const token = localStorage.getItem("token");
 
 // API chaqiruvida timeout qo'llash
 const TIMEOUT_MS = 20000; // 20 soniya
@@ -32,11 +33,13 @@ const fetchWithTimeout = async (url, options = {}) => {
 export const apiGetUnpaidOrders = async () => {
   console.log("apiGetUnpaidOrders")
   try {
-    const url = `${API_BASE}/orders/`;
+    const url = `${API_BASE}/order/orders/`;
     const response = await fetchWithTimeout(url, {
       method: "GET",
       headers: {
+        Accept: "application/json",
         "Content-Type": "application/json",
+        "Authorization": `Token ${token}`
       },
     });
 
@@ -61,11 +64,13 @@ export const apiFindOrderByTable = async (tableNumber) => {
   console.log("tableNumber ", tableNumber);
   
   try {
-    const url = `${API_BASE}/orders/?table=${tableNumber}`;
+    const url = `${API_BASE}/order/orders/?table=${tableNumber}`;
     const response = await fetchWithTimeout(url, {
       method: "GET",
       headers: {
+         Accept: "application/json",
         "Content-Type": "application/json",
+        "Authorization": `Token ${token}`
       },
     });
 
@@ -93,7 +98,9 @@ export const apiStartPayment = async (orderId) => {
     const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
+         Accept: "application/json",
         "Content-Type": "application/json",
+        "Authorization": `Token ${token}`
       },
       body: JSON.stringify({
         order_id: orderId,
@@ -117,11 +124,13 @@ export const apiStartPayment = async (orderId) => {
  */
 export const apiApplyDiscount = async (orderId, discountData) => {
   try {
-    const url = `${API_BASE}/orders/${orderId}/discount`;
+    const url = `${API_BASE}/order/orders/${orderId}/discount`;
     const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
+         Accept: "application/json",
         "Content-Type": "application/json",
+        "Authorization": `Token ${token}`
       },
       body: JSON.stringify({
         type: discountData.type || "percent",
@@ -147,15 +156,17 @@ export const apiApplyDiscount = async (orderId, discountData) => {
  */
 export const apiCompletePayment = async (paymentData) => {
   try {
-    const url = `${API_BASE}/payments/complete`;
+    const url = `${API_BASE}/order/payments/`;
     const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
+         Accept: "application/json",
         "Content-Type": "application/json",
+        "Authorization": `Token ${token}`
       },
       body: JSON.stringify({
-        order_id: paymentData.orderId || paymentData.order_id,
-        payment_method: paymentData.payment_method || "cash",
+        order: paymentData.orderId || paymentData.order_id,
+        payment_type: paymentData.payment_method || "cash",
         cash_amount: Number(paymentData.cash_amount || 0),
         card_amount: Number(paymentData.card_amount || 0),
       }),
@@ -182,7 +193,9 @@ export const apiPrintReceipt = async (orderId) => {
     const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: {
+         Accept: "application/json",
         "Content-Type": "application/json",
+        "Authorization": `Token ${token}`
       },
       body: JSON.stringify({
         order_id: orderId,

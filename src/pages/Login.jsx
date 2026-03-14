@@ -85,17 +85,6 @@ export default function Login() {
           >
             {isLoading ? "Tekshirilmoqda..." : "Kirish"}
           </button>
-
-          <div className="text-center text-muted small">
-            Hisobingiz yo'qmi?{" "}
-            <span 
-              className="text-success fw-bold" 
-              style={{ cursor: "pointer", textDecoration: "underline" }}
-              onClick={() => navigate("/register")}
-            >
-              Ro'yxatdan o'ting
-            </span>
-          </div>
         </form>
       </div>
     </div>

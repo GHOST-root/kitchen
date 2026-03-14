@@ -1,25 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
-// DndContext larni olib tashlaganmiz
 import TicketCard from "./TicketCard.jsx";
 import TicketModal from "./TicketModal.jsx";
-import {
-  apiGetKitchenTickets,
-  apiGetKitchenTicketItems,
-  apiSetKitchenTicketStatus,
-  normalizeList,
-  itemToText,
-} from "./oshxonaApi.jsx";
+import { apiGetKitchenOrders, apiSetOrderStatus } from "./oshxonaApi.jsx";
 
 const COLS = [
-  { key: "NEW", title: "YANGI" },
-  { key: "COOKING", title: "TAYYORLANMOQDA" },
-  { key: "READY", title: "TAYYOR" },
+  { key: "Yangi", title: "YANGI", colColor: "NEW" },
+  { key: "Tayyorlanmoqda", title: "TAYYORLANMOQDA", colColor: "COOKING" },
+  { key: "Tayyor", title: "TAYYOR", colColor: "READY" },
 ];
 
-export default function KitchenBoard({ branchId = 1 }) {
+export default function KitchenBoard() {
   const [tickets, setTickets] = useState([]);
-  const [itemsByTicket, setItemsByTicket] = useState({});
   const [busyMap, setBusyMap] = useState({});
   const [error, setError] = useState("");
 
@@ -29,19 +20,59 @@ export default function KitchenBoard({ branchId = 1 }) {
   const abortRef = useRef(null);
 
   const grouped = useMemo(() => {
-    const map = { NEW: [], COOKING: [], READY: [] };
+    const map = { "Yangi": [], "Tayyorlanmoqda": [], "Tayyor": [] };
 
-    for (const t of tickets) {
-      if (map[t.status]) map[t.status].push(t);
-    }
+    // Xotiradan oldin pishirilgan taomlar ro'yxatini olamiz
+    const cookedItemIds = JSON.parse(localStorage.getItem("cooked_items") || "[]");
 
-    // Eng eski buyurtmalar doim tepada turishi uchun
-    for (const key of Object.keys(map)) {
-      map[key].sort((a, b) => {
-        const ta = new Date(a.created_at || 0).getTime();
-        const tb = new Date(b.created_at || 0).getTime();
-        return ta - tb; 
+    tickets.forEach(t => {
+      // 1-QOIDA: Agar backend butun buyurtmani "Tayyor" desa yoki biz uni aynan Tayyorga o'tkazgan bo'lsak,
+      // uni hech qanday filtrsiz to'g'ridan-to'g'ri "Tayyor" ustuniga yuboramiz. Yo'qolib ketmaydi!
+      if (t.status === "Tayyor") {
+        map["Tayyor"].push(t);
+        return;
+      }
+
+      // 2-QOIDA: Agar buyurtma "Yangi" yoki "Tayyorlanmoqda" kelsa (masalan, keyinroq Choy qo'shilgan bo'lsa),
+      // biz uning ichidagi taomlarni 2 ga bo'lamiz: Pishganlar va Yangilar
+      const cookedItems = [];
+      const freshItems = [];
+
+      (t.items || []).forEach(it => {
+        if (cookedItemIds.includes(it.id)) {
+          cookedItems.push(it);
+        } else {
+          freshItems.push(it);
+        }
       });
+
+      // Pishmaganlari (masalan faqat "Choy") o'zining asl statusi (Yangi/Tayyorlanmoqda) bo'yicha qoladi
+      if (freshItems.length > 0) {
+        map[t.status].push({ ...t, items: freshItems });
+      }
+
+      // Allaqachon pishib bo'lganlari (oldindan tayyor bo'lgan ovqatlar) yana Yangiga tushib qolmasligi uchun 
+      // ularni ekranda alohida kartochka qilib "Tayyor" ustuniga o'tkazib qo'yamiz.
+      if (cookedItems.length > 0) {
+        map["Tayyor"].push({ ...t, items: cookedItems, status: "Tayyor" });
+      }
+    });
+
+    // TAYYOR USTUNINI STOL BO'YICHA BIRLASHTIRISH
+    const readyMap = {};
+    map["Tayyor"].forEach(t => {
+       const table = String(t.table_number);
+       if (!readyMap[table]) {
+           readyMap[table] = { ...t, id: `ready-table-${table}`, items: [...(t.items || [])] };
+       } else {
+           readyMap[table].items.push(...(t.items || []));
+       }
+    });
+    map["Tayyor"] = Object.values(readyMap);
+
+    // Vaqtiga qarab tartiblash
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
     }
 
     return map;
@@ -58,50 +89,29 @@ export default function KitchenBoard({ branchId = 1 }) {
 
     try {
       setError("");
-      const data = await apiGetKitchenTickets({ branchId, statuses: ["NEW", "COOKING", "READY"], signal: ac.signal });
-      const ticketList = normalizeList(data);
-      setTickets(ticketList);
-
-      const itemPairs = await Promise.all(
-        ticketList.map(async (ticket) => {
-          try {
-            const items = await apiGetKitchenTicketItems({ ticketId: ticket.id, signal: ac.signal });
-            return [String(ticket.id), items.map(itemToText)];
-          } catch (e) {
-            if (e?.name === "AbortError") throw e;
-            return [String(ticket.id), []];
-          }
-        })
-      );
-
-      const nextItemsByTicket = {};
-      for (const [ticketId, lines] of itemPairs) {
-        nextItemsByTicket[ticketId] = lines;
-      }
-      setItemsByTicket(nextItemsByTicket);
+      const data = await apiGetKitchenOrders({ signal: ac.signal });
+      setTickets(data);
     } catch (e) {
       if (e?.name === "AbortError") return;
-      setError(e?.message || "Load error");
+      setError(e?.message || "Yuklashda xatolik");
     }
   }
 
-  // --- CHAP VA O'NG TUGMA MANTIG'I SHU YERDA ---
   async function handleStatusChange(ticket, direction) {
     if (!ticket?.id || busyMap[ticket.id]) return;
 
-    let nextStatus = null;
+    // 🔥 BLOKLASH: Tayyor ustunidagi kartochkani kassir pulini to'lamaguncha yo'qotib bo'lmaydi
+    if (ticket.status === "Tayyor" || String(ticket.id).startsWith("ready-table")) {
+       return; 
+    }
 
-    // 1. Agar CHAP tugma bosilsa (Oldinga o'tish)
+    let nextStatus = null;
     if (direction === "FORWARD") {
-      if (ticket.status === "NEW") nextStatus = "COOKING";
-      else if (ticket.status === "COOKING") nextStatus = "READY";
-      else if (ticket.status === "READY") nextStatus = "DONE"; // Tayyordan keyin ekrandan yo'qoladi
+      if (ticket.status === "Yangi") nextStatus = "Tayyorlanmoqda";
+      else if (ticket.status === "Tayyorlanmoqda") nextStatus = "Tayyor";
     } 
-    // 2. Agar O'NG tugma bosilsa (Orqaga qaytish)
     else if (direction === "BACKWARD") {
-      if (ticket.status === "READY") nextStatus = "COOKING";
-      else if (ticket.status === "COOKING") nextStatus = "NEW";
-      // NEW dan orqaga yo'l yo'q
+      if (ticket.status === "Tayyorlanmoqda") nextStatus = "Yangi";
     }
 
     if (!nextStatus) return;
@@ -111,20 +121,25 @@ export default function KitchenBoard({ branchId = 1 }) {
     setError("");
 
     try {
-      // Backendga yuborish
-      await apiSetKitchenTicketStatus(ticket, nextStatus);
+      await apiSetOrderStatus(ticketId, nextStatus);
 
-      // UI ni darhol o'zgartirish
-      setTickets((prev) => {
-        if (nextStatus === "DONE") {
-          return prev.filter(t => t.id !== ticketId); // "DONE" bo'lsa ekrandan tozalaymiz
-        }
-        return prev.map((t) => (t.id === ticketId ? { ...t, status: nextStatus } : t));
-      });
+      // 🔥 3-QADAM: Agar taom "Tayyor" ga o'tayotgan bo'lsa, uning ID larini xotiraga yozamiz
+      if (nextStatus === "Tayyor") {
+          const cookedItemIds = JSON.parse(localStorage.getItem("cooked_items") || "[]");
+          (ticket.items || []).forEach(it => {
+              if (!cookedItemIds.includes(it.id)) {
+                  cookedItemIds.push(it.id);
+              }
+          });
+          // Xotira to'lib ketmasligi uchun faqat oxirgi 1000 ta taomni eslab qolamiz
+          if (cookedItemIds.length > 1000) cookedItemIds.splice(0, cookedItemIds.length - 1000);
+          localStorage.setItem("cooked_items", JSON.stringify(cookedItemIds));
+      }
+
+      setTickets((prev) => prev.map((t) => (t.id === ticketId ? { ...t, status: nextStatus } : t)));
       
-      setTimeout(() => loadAll("after-click"), 300);
     } catch (e) {
-      setError(e?.message || "Status update failed");
+      setError(e?.message || "Statusni o'zgartirib bo'lmadi");
     } finally {
       setBusy(ticketId, false);
     }
@@ -137,13 +152,13 @@ export default function KitchenBoard({ branchId = 1 }) {
       clearInterval(intervalId);
       abortRef.current?.abort?.();
     };
-  }, [branchId]);
+  }, []);
 
   return (
     <>
-      {error ? <div className="alert alert-danger mt-3">{error}</div> : null}
+      {error && <div className="alert alert-danger mt-3 fw-bold">{error}</div>}
 
-      <div className="d-flex justify-content-end mb-2 pe-3 gap-3" style={{ fontSize: "12px", color: "var(--muted)" }}>
+      <div className="d-flex justify-content-end mb-2 pe-3 gap-3" style={{ fontSize: "13px", color: "#64748b" }}>
         <span>🖱️ <b>Chap tugma:</b> Oldinga o'tkazish</span>
         <span>🖱️ <b>O'ng tugma:</b> Orqaga qaytarish</span>
       </div>
@@ -154,8 +169,8 @@ export default function KitchenBoard({ branchId = 1 }) {
             key={col.key}
             colKey={col.key}
             title={col.title}
+            colColor={col.colColor}
             tickets={grouped[col.key]}
-            itemsByTicket={itemsByTicket}
             busyMap={busyMap}
             onOpen={(ticket) => {
               setSelected(ticket);
@@ -169,7 +184,7 @@ export default function KitchenBoard({ branchId = 1 }) {
       <TicketModal
         open={modalOpen}
         ticket={selected}
-        itemsText={selected ? itemsByTicket[String(selected.id)] || [] : []}
+        itemsText={selected ? selected.items : []}
         onClose={() => {
           setModalOpen(false);
           setSelected(null);
@@ -179,40 +194,36 @@ export default function KitchenBoard({ branchId = 1 }) {
   );
 }
 
-// Kolonka komponenti
-function Column({ colKey, title, tickets, itemsByTicket, busyMap, onOpen, onChangeStatus }) {
+function Column({ colKey, title, colColor, tickets, busyMap, onOpen, onChangeStatus }) {
   return (
-    <div className="kds-col" data-col={colKey}>
-      <div className="kds-col-title">{title}</div>
+    <div className="kds-col" data-col={colColor}>
+      <div className="kds-col-title fw-bold">{title} <span className="badge bg-secondary ms-2">{tickets.length}</span></div>
 
       <div className="kds-stack">
         {tickets.map((ticket) => (
           <div 
             key={ticket.id} 
-            
-            // CHAP TUGMA (Oldinga)
+            className={`ticket-card-wrapper border-color-${colColor}`}
             onClick={(e) => {
               e.preventDefault();
               onChangeStatus(ticket, "FORWARD");
             }} 
-            
-            // O'NG TUGMA (Orqaga)
             onContextMenu={(e) => {
-              e.preventDefault(); // Brauzerning menyusi (Copy, Paste...) chiqib qolmasligini ta'minlaydi
+              e.preventDefault(); 
               onChangeStatus(ticket, "BACKWARD");
             }}
-
             style={{ 
-              cursor: "pointer", 
+              // Tayyor bo'lgan ustunni bosib bo'lmasligini kursor orqali bildiramiz
+              cursor: colColor === "READY" ? "default" : "pointer", 
               transition: "transform 0.1s"
             }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.02)"}
+            onMouseEnter={(e) => e.currentTarget.style.transform = colColor === "READY" ? "scale(1)" : "scale(1.02)"}
             onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
           >
             <TicketCard
-              ticket={ticket}
+              ticket={{ ...ticket, cssStatus: colColor }}
               busy={!!busyMap[ticket.id]}
-              items={itemsByTicket[String(ticket.id)] || []}
+              items={ticket.items || []}
               onOpen={onOpen}
             />
           </div>

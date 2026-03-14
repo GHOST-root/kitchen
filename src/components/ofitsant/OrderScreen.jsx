@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useContext } from "react";
+import './ofitsantStyles.css'
+import { AuthContext } from "../../context/AuthContext.jsx"; 
 import {
   apiGetOrCreateOrderByTable,
   apiAddItem,
-  apiSetQty,
   apiSendToKitchen,
-  apiSetTableBusy
+  apiSetTableBusy,
+  apiUpdateOrderGuests
 } from "./ofitsantApi.jsx";
 import req from "./ofitsantApi.jsx";
 
@@ -13,49 +15,51 @@ function formatUZS(n){
   return s.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-// O'tgan safargi tableData (Modal orqali keladigan ma'lumot) ni qabul qilamiz
 export default function OrderScreen({ tableData, onBack }) {
+  const { user } = useContext(AuthContext); 
+
   const tableId = tableData.id;
-  const tableNumber = tableData.number;
-  const guestsCount = tableData.guestsCount;
-  const [draftSelection, setDraftSelection] = useState([]); // Belgilangan taomlar ID lari
+  const guestsCountInitial = tableData.guestsCount;
 
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
-
   const [activeCat, setActiveCat] = useState(null);
   const [search, setSearch] = useState("");
-
+  
   const [order, setOrder] = useState(null);
-  const [selectedItemId, setSelectedItemId] = useState(null);
-
+  
+  // 🔥 ASOSIY O'ZGARISH: Savat endi to'liq local (jo'natilmaguncha bazaga bormaydi)
+  const [localCart, setLocalCart] = useState([]);
+  const [draftSelection, setDraftSelection] = useState([]);
+  
   const [loading, setLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const [toast, setToast] = useState("");
-
-  const filteredProducts = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    return products
-      .filter(p => (activeCat ? p.category === activeCat : true))
-      .filter(p => (!s ? true : p.name.toLowerCase().includes(s)));
-  }, [products, activeCat, search]);
-
-  const items = order?.items ?? [];
-  const total = items.reduce((sum, it) => sum + it.price * it.qty, 0);
-
-  const selectedItem = useMemo(() => {
-    if (!selectedItemId) return null;
-    return items.find(x => x.id === selectedItemId) || null;
-  }, [selectedItemId, items]);
 
   const [drafts, setDrafts] = useState(() => {
     const saved = localStorage.getItem(`drafts_table_${tableId}`);
     return saved ? JSON.parse(saved) : [];
   });
-  
-  const [undoItem, setUndoItem] = useState(null);
-  const [undoTimer, setUndoTimer] = useState(null);
 
-  // Kategoriyalar va mahsulotlarni yuklash
+  // 🔥 1-MUAMMO YECHIMI: Stol o'zgarganda hamma eski statelarni tozalaymiz (aralashib ketmaydi)
+  useEffect(() => {
+    const ac = new AbortController();
+    setLoading(true);
+    setOrder(null);
+    setLocalCart([]);
+    setDraftSelection([]);
+    setToast("");
+
+    apiGetOrCreateOrderByTable(tableId, guestsCountInitial, { signal: ac.signal })
+      .then((o) => setOrder(o))
+      .catch((e) => {
+        if (e.name !== "AbortError") setToast(String(e.message || e));
+      })
+      .finally(() => setLoading(false));
+      
+    return () => ac.abort();
+  }, [tableId, guestsCountInitial]);
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -71,183 +75,57 @@ export default function OrderScreen({ tableData, onBack }) {
     loadData();
   }, []);
 
-  // Buyurtmani yuklash (guestsCount bilan)
   useEffect(() => {
-    const ac = new AbortController();
-    setLoading(true);
-    apiGetOrCreateOrderByTable(tableId, guestsCount, { signal: ac.signal })
-      .then((o) => {
-        setOrder(o);
-        setSelectedItemId(o.items?.[0]?.id ?? null);
-        setToast("");
-      })
-      .catch((e) => setToast(String(e.message || e)))
-      .finally(() => setLoading(false));
-    return () => ac.abort();
-  }, [tableId, guestsCount]);
-
-  // Draftlarni saqlash
-  useEffect(() => {
-    localStorage.setItem(`drafts_table_${tableId}`, JSON.stringify(drafts));
+    if (drafts.length > 0) {
+      localStorage.setItem(`drafts_table_${tableId}`, JSON.stringify(drafts));
+    } else {
+      localStorage.removeItem(`drafts_table_${tableId}`);
+    }
   }, [drafts, tableId]);
 
-  // --- TAOM QO'SHISH (Optimistic UI ulanishi bilan) ---
-  async function addProduct(p){
+  const filteredProducts = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return products
+      .filter(p => (activeCat ? p.category === activeCat : true))
+      .filter(p => (!s ? true : p.name.toLowerCase().includes(s)));
+  }, [products, activeCat, search]);
+
+  // Jami summalarni hisoblash
+  const alreadySentItems = order?.items || [];
+  const alreadySentTotal = alreadySentItems.reduce((sum, it) => sum + it.price * it.qty, 0);
+  const localItemsTotal = localCart.reduce((sum, it) => sum + it.price * it.qty, 0);
+  
+  const serviceFee = (order?.guestsCount || 1) * 1000;
+  const grandTotal = alreadySentTotal + localItemsTotal + serviceFee;
+
+  // 🔥 Mahalliy savatga qo'shish (Backendga darhol bormaydi, judayam tez ishlaydi!)
+  function addProduct(p){
     if (!order) return;
-
-    const prev = order;
-    const existed = order.items.find(x => x.productId === p.id);
-    const tempId = crypto.randomUUID(); 
-    
-    const nextItems = existed
-      ? order.items.map(x => x.productId === p.id ? { ...x, qty: x.qty + 1 } : x)
-      : [{ id: tempId, productId: p.id, name: p.name, price: p.price, qty: 1 }, ...order.items];
-
-    setOrder({ ...order, items: nextItems });
-
-    const sel = existed ? nextItems.find(x => x.productId === p.id) : nextItems[0];
-    setSelectedItemId(sel?.id ?? null);
-
-    try {
-      await apiAddItem(order.id, p.id, 1);
-      setToast("");
-
-      // Backenddan yangi ID larni olish uchun darhol yangilaymiz
-      const updatedOrder = await apiGetOrCreateOrderByTable(tableId, guestsCount);
-      setOrder(updatedOrder);
-
-      if (!existed) {
-        const addedItem = updatedOrder.items.find(x => x.productId === p.id);
-        if (addedItem) setSelectedItemId(addedItem.id);
-      }
-    } catch (error) {
-      console.error(error);
-      setOrder(prev); 
-      setToast("❌ Taom qo‘shilmadi. Qayta urinib ko‘ring.");
-    }
-  }
-
-  async function moveSelectedToDraft() {
-    if (draftSelection.length === 0 || !order) return;
-
-    // 1. O'tkazilishi kerak bo'lgan taomlarni topamiz
-    const itemsToMove = order.items.filter(it => draftSelection.includes(it.id));
-    const prevOrder = order;
-
-    // 2. Savatdan (UI) olib tashlaymiz
-    const nextItems = order.items.filter(it => !draftSelection.includes(it.id));
-    setOrder({ ...order, items: nextItems });
-
-    // 3. Draftlarga qo'shamiz
-    let newDrafts = [...drafts];
-    itemsToMove.forEach(item => {
-      const exist = newDrafts.find(d => d.productId === item.productId);
-      if (exist) {
-        exist.qty += item.qty;
-      } else {
-        newDrafts.unshift({ id: crypto.randomUUID(), productId: item.productId, name: item.name, price: item.price, qty: item.qty });
-      }
+    setLocalCart(prev => {
+      const ex = prev.find(x => x.productId === p.id);
+      if (ex) return prev.map(x => x.productId === p.id ? { ...x, qty: x.qty + 1 } : x);
+      return [{ id: crypto.randomUUID(), productId: p.id, name: p.name, price: p.price, qty: 1 }, ...prev];
     });
-    setDrafts(newDrafts);
-    setDraftSelection([]); // Belgilanganlarni tozalab tashlaymiz
-
-    // 4. Backenddan o'chiramiz
-    try {
-      await Promise.all(itemsToMove.map(item => 
-        req(`/order/order-items/${item.id}/`, { method: "DELETE" })
-      ));
-      setToast("📁 Tanlangan taomlar keyinroqqa olib qo'yildi");
-    } catch (e) {
-      setOrder(prevOrder); // Xato bo'lsa orqaga qaytaramiz
-      setToast("❌ O'tkazishda xatolik yuz berdi");
-    }
   }
 
-  // --- MIQDORNI O'ZGARTIRISH ---
-  async function changeQty(delta){
-    if (!order || !selectedItem) return;
-
-    const prev = order;
-    const nextQty = Math.max(0, selectedItem.qty + delta);
-
-    const nextItems = nextQty === 0
-        ? order.items.filter(x => x.id !== selectedItem.id)
-        : order.items.map(x => x.id === selectedItem.id ? { ...x, qty: nextQty } : x);
-
-    setOrder({ ...order, items: nextItems });
-    if (nextQty === 0) setSelectedItemId(nextItems[0]?.id ?? null);
-
-    try {
-      if (nextQty === 0) {
-        await req(`/order/order-items/${selectedItem.id}/`, { method: "DELETE" });
-      } else {
-        await apiSetQty(selectedItem.id, nextQty);
-      }
-      setToast("");
-    } catch {
-      setOrder(prev);
-      setToast("❌ Miqdor o‘zgarmadi. Qayta urinib ko‘ring.");
-    }
+  function changeQty(itemToChange, delta){
+    setLocalCart(prev => {
+      const nextQty = itemToChange.qty + delta;
+      if (nextQty <= 0) return prev.filter(x => x.id !== itemToChange.id);
+      return prev.map(x => x.id === itemToChange.id ? { ...x, qty: nextQty } : x);
+    });
   }
 
-  // --- SAVATDAN KEYINROQ JILDIGA O'TKAZISH ---
-  async function moveItemToDraft() {
-    if (!order || !selectedItem) return;
-
-    const itemToMove = selectedItem;
-    const prevOrder = order;
-
-    // 1. Savatdan olib tashlaymiz
-    const nextItems = order.items.filter(x => x.id !== itemToMove.id);
-    setOrder({ ...order, items: nextItems });
-    setSelectedItemId(nextItems[0]?.id ?? null);
-
-    // 2. Draftga qo'shamiz
-    const existedDraft = drafts.find(x => x.productId === itemToMove.productId);
-    if (existedDraft) {
-      setDrafts(drafts.map(x => x.productId === itemToMove.productId ? { ...x, qty: x.qty + itemToMove.qty } : x));
-    } else {
-      setDrafts([{ id: crypto.randomUUID(), productId: itemToMove.productId, name: itemToMove.name, price: itemToMove.price, qty: itemToMove.qty }, ...drafts]);
-    }
-
-    // 3. Backenddan o'chiramiz (savatdan ketishi uchun)
-    try {
-      await req(`/order/order-items/${itemToMove.id}/`, { method: "DELETE" });
-      setToast("📁 Taom keyinroqqa olib qo'yildi");
-    } catch (e) {
-      setOrder(prevOrder);
-      setToast("❌ O'tkazishda xatolik yuz berdi");
-    }
-  }
-
-  // --- OSHXONAGA YUBORISH ---
-  async function sendToKitchen() {
+  async function changeGuests(delta) {
     if (!order) return;
-    setOrder({ ...order, items: [] });
-    setSelectedItemId(null);
-    setToast("✅ Oshxonaga yuborildi");
-    apiSetTableBusy(order.tableNumber).catch(console.log);
-    window.dispatchEvent(new Event("tables-refresh"));
-    apiSendToKitchen(order).catch(console.log);
-  }
-
-  // --- DRAFT (KEYINROQ) MANTIG'I ---
-  function removeDraft(id) {
-    const itemToRemove = drafts.find(x => x.id === id);
-    setUndoItem(itemToRemove);
-    setDrafts(drafts.filter(x => x.id !== id));
-    if (undoTimer) clearTimeout(undoTimer);
-    const timer = setTimeout(() => { setUndoItem(null); }, 10000);
-    setUndoTimer(timer);
-    setToast("🗑 O'chirildi. Qaytarish uchun 10 soniya bor.");
-  }
-
-  function undoDelete() {
-    if (undoItem) {
-      setDrafts([undoItem, ...drafts]);
-      setUndoItem(null);
-      if (undoTimer) clearTimeout(undoTimer);
-      setToast("🔙 Qaytarildi");
+    const currentCount = Number(order.guestsCount) || 1;
+    const nextCount = Math.max(1, currentCount + delta);
+    setOrder({ ...order, guestsCount: nextCount });
+    try {
+      await apiUpdateOrderGuests(order.id, nextCount);
+    } catch (e) {
+      setOrder({ ...order, guestsCount: currentCount });
+      setToast("❌ Mehmon soni saqlanmadi");
     }
   }
 
@@ -257,104 +135,148 @@ export default function OrderScreen({ tableData, onBack }) {
     );
   }
 
-  async function moveDraftToOrder() {
-    if (!order) return;
-    for (const d of drafts) {
-      await apiAddItem(order.id, d.productId, d.qty);
-    }
+  function moveSelectedToDraft() {
+    if (draftSelection.length === 0) return;
+    const itemsToMove = localCart.filter(it => draftSelection.includes(it.id));
+    const nextLocal = localCart.filter(it => !draftSelection.includes(it.id));
+    
+    setLocalCart(nextLocal);
+    
+    let newDrafts = [...drafts];
+    itemsToMove.forEach(item => {
+      const exist = newDrafts.find(d => d.productId === item.productId);
+      if (exist) exist.qty += item.qty;
+      else newDrafts.unshift({ ...item, id: crypto.randomUUID() });
+    });
+    
+    setDrafts(newDrafts);
+    setDraftSelection([]);
+  }
+
+  function removeDraft(id) { 
+    setDrafts(drafts.filter(x => x.id !== id)); 
+  }
+
+  function moveDraftToOrder() {
+    const newLocal = [...localCart];
+    drafts.forEach(d => {
+       const ex = newLocal.find(x => x.productId === d.productId);
+       if (ex) ex.qty += d.qty;
+       else newLocal.push({ ...d, id: crypto.randomUUID() });
+    });
+    setLocalCart(newLocal);
     setDrafts([]);
-    const updated = await apiGetOrCreateOrderByTable(tableId, guestsCount);
-    setOrder(updated);
-    setToast("✅ Draftlar savatga o'tdi");
   }
 
-  if (loading) {
-    return (
-      <div className="page">
-        <div className="container-fluid py-3 smallx muted">Order yuklanmoqda…</div>
-      </div>
-    );
+  // 🔥 YUBORISH MANTIG'I (Faqatgina shu yerda backend bilan ishlash bo'ladi)
+  async function sendToKitchen() {
+    if (!order || localCart.length === 0) return;
+    
+    setIsSending(true);
+    setToast("⏳ Jo'natilmoqda...");
+    
+    try {
+      // 1. Stolni band qilamiz
+      await apiSetTableBusy(order.tableNumber).catch(() => {});
+      
+      // 2. Mahalliy savatdagi (Yangi) taomlarni bazaga saqlaymiz 
+      // Promise.all orqali hammasini bittada yuboramiz - tez ishlaydi
+      await Promise.all(localCart.map(item => 
+        apiAddItem(order.id, item.productId, item.qty)
+      ));
+
+      // 3. Statusni oshxonaga yuborilgan deb o'zgartiramiz
+      if (order.status !== "sent_to_kitchen" && order.status !== "preparing" && order.status !== "ready") {
+        await apiSendToKitchen(order).catch(err => {
+          if (!err.message?.includes("allaqachon")) throw err;
+        });
+      }
+
+      // 4. Muvaffaqiyatli yakun (Savat tozalanadi, ekran orqaga qaytadi)
+      setToast("✅ Oshxonaga yuborildi!");
+      setLocalCart([]);
+      setDraftSelection([]);
+      setDrafts([]);
+      localStorage.removeItem(`drafts_table_${tableId}`);
+      
+      window.dispatchEvent(new Event("tables-refresh"));
+
+      setTimeout(() => {
+        onBack();
+      }, 700);
+
+    } catch (e) {
+      setToast("❌ Xatolik yuz berdi");
+      console.error(e);
+      setIsSending(false); // Xato bo'lsa qayta bosishga ruxsat
+    }
   }
 
-  if (!order) {
-    return (
-      <div className="page">
-        <div className="container-fluid py-3">
-          <button className="btn btn-outline-secondary" onClick={onBack} type="button">← Orqaga</button>
-          <div className="smallx mt-2" style={{ color: "var(--danger)" }}>{toast || "Order topilmadi"}</div>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="page p-3 muted d-flex justify-content-center align-items-center h-100 fw-bold fs-5">Yuklanmoqda…</div>;
+  if (!order) return <div className="page p-3"><button className="btn btn-outline-secondary" onClick={onBack}>← Orqaga</button></div>;
 
   return (
     <div className="page">
-      <div className="cardx" style={{ borderRadius: 0, borderLeft: 0, borderRight: 0 }}>
-        <div className="container-fluid py-2">
-          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <button className="btn btn-sm btn-outline-secondary" onClick={onBack} type="button">← Orqaga</button>
-            <div className="bodyx d-flex flex-wrap gap-3 align-items-center">
-              <div><b>Stol:</b> {order.tableNumber}</div>
-              <div><b>Status:</b> Band</div>
+      {/* HEADER */}
+      <div className="bg-white shadow-sm mb-3">
+        <div className="container-fluid py-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+          <button className="btn btn-light fw-bold px-4" onClick={onBack}>← Otrqaga</button>
+          
+          <div className="d-flex flex-wrap gap-4 align-items-center">
+            <div className="d-flex align-items-center gap-2 border-end pe-4">
+               <span className="fs-3">👨‍🍳</span>
+               <div>
+                 <div className="text-muted" style={{ fontSize: "0.75rem", fontWeight: "bold", textTransform: "uppercase" }}>Ofitsiant</div>
+                 <div className="fw-bold text-dark fs-6">{user?.username || user?.name || "Kiritilmagan"}</div>
+               </div>
             </div>
-            <div className="bodyx d-flex align-items-center gap-2">
-              <b>Buyurtma:</b> #{order.code || order.number || "—"}
+
+            <div className="d-flex align-items-center gap-2">
+              <span className="fs-4 text-primary fw-bold">Stol {order.tableNumber}</span>
+              <div className="chip chip-busy ms-2 shadow-sm">Band</div>
             </div>
+          </div>
+          
+          <div className="bg-light px-3 py-2 rounded-3 border">
+            <span className="text-muted small fw-bold me-2">BUYURTMA:</span>
+            <span className="fw-bold fs-5 text-dark">#{order.code || order.number || "—"}</span>
           </div>
         </div>
       </div>
 
-      <div className="page-body container-fluid py-3">
-        <div className="row g-3">
+      <div className="page-body container-fluid pb-4">
+        <div className="row g-4">
           
           {/* 1. KATEGORIYALAR */}
           <div className="col-12 col-md-3">
-            <div className="cardx p-3">
-              <div className="h2x mb-2">KATEGORIYA</div>
-              <input
-                className="form-control inputx mb-2"
-                placeholder="🔎 Qidiruv"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="cardx p-3 border-0 h-100">
+              <div className="h2x mb-3 text-primary">KATEGORIYA</div>
+              <input className="form-control inputx mb-3" placeholder="🔎 Qidiruv" value={search} onChange={(e) => setSearch(e.target.value)} />
               <div className="d-grid gap-2">
-                {categories
-                  .filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
-                  .map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={"btn text-start " + (activeCat === c.id ? "btn-primaryx" : "btn-outline-secondary")}
-                      onClick={() => setActiveCat(c.id)}
-                    >
-                      • {c.name}
-                    </button>
-                  ))}
+                {categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase())).map(c => (
+                  <button key={c.id} type="button" 
+                    className={`btn text-start fw-bold py-2 ${activeCat === c.id ? "btn-primaryx shadow-sm" : "btn-light text-secondary"}`} 
+                    onClick={() => setActiveCat(c.id)}>
+                    {c.name}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* 2. TAOMLAR RO'YXATI */}
-          <div className="col-12 col-md-6">
-            <div className="cardx p-3">
-              <div className="h2x mb-2">TAOMLAR</div>
-              <div className="row g-2">
+          {/* 2. TAOMLAR */}
+          <div className="col-12 col-md-5">
+            <div className="cardx p-3 border-0 h-100 bg-white">
+              <div className="h2x mb-3 text-primary">TAOMLAR</div>
+              <div className="row g-3">
                 {filteredProducts.map(p => (
-                  <div key={p.id} className="col-12 col-sm-6">
-                    <div className="cardx p-3 w-100">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                          <div className="bodyx fw-bold">{p.name}</div>
-                          <div className="smallx muted">{p.desc}</div>
-                        </div>
-                        <div className="priceX">{formatUZS(p.price)}</div>
+                  <div key={p.id} className="col-12 col-xl-6">
+                    <div className="cardx p-3 w-100 h-100 d-flex flex-column justify-content-between" style={{ border: "1px solid #e2e8f0" }}>
+                      <div className="mb-3">
+                        <div className="bodyx fw-bold fs-6 mb-1 text-dark">{p.name}</div>
+                        <div className="priceX text-muted">{formatUZS(p.price)}</div>
                       </div>
-                      <div className="d-flex gap-2">
-                        {/* Faqat bitta tugma qoldi */}
-                        <button className="btn btn-sm btn-primaryx flex-grow-1" onClick={() => addProduct(p)}>
-                          + Savatga qo'shish
-                        </button>
-                      </div>
+                      <button className="btn btn-sm btn-primaryx w-100 py-2" onClick={() => addProduct(p)}>+ Savatga</button>
                     </div>
                   </div>
                 ))}
@@ -362,89 +284,131 @@ export default function OrderScreen({ tableData, onBack }) {
             </div>
           </div>
 
-          {/* 3. SAVAT VA KEYINROQ JILDI */}
-          <div className="col-12 col-md-3">
-            <div className="cardx p-3 cart-sticky cart-mobile-height">
+          {/* 3. SAVAT */}
+          <div className="col-12 col-md-4">
+            <div className="cardx p-3 border-0 cart-sticky h-100 d-flex flex-column bg-white">
               
-              {/* KEYINROQ JILDI */}
-              <div className="p-2 mb-3" style={{ border: "2px dashed #0dcaf0", borderRadius: "12px", background: "#f0f9ff" }}>
-                <div className="d-flex justify-content-between align-items-center mb-1">
-                  <div className="smallx fw-bold text-info">📁 KEYINROQ ({drafts.length})</div>
-                  {drafts.length > 0 && (
-                    <button className="btn btn-sm btn-info text-white py-0" onClick={moveDraftToOrder}>Yuborish</button>
-                  )}
+              {drafts.length > 0 && (
+                <div className="p-3 mb-3" style={{ backgroundColor: "#f0fdfa", borderRadius: "12px", border: "1px dashed #14b8a6" }}>
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <div className="small fw-bold text-teal" style={{ color: "#0f766e" }}>📁 KEYINROQ ({drafts.length})</div>
+                    <button className="btn btn-sm btn-success fw-bold px-3 py-1" onClick={moveDraftToOrder}>Yuborish</button>
+                  </div>
+                  <div style={{ maxHeight: "120px", overflowY: "auto" }}>
+                    {drafts.map((d, i) => (
+                      <div key={d.id || i} className="d-flex justify-content-between align-items-center border-bottom border-light py-2 small fw-bold">
+                        <span className="text-dark">{d.name} <span className="text-muted">x{d.qty}</span></span>
+                        <button className="btn btn-sm btn-light text-danger rounded-circle p-1" style={{ width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => removeDraft(d.id)}>×</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ maxHeight: "120px", overflowY: "auto" }}>
-                  {drafts.map(d => (
-                    <div key={d.id} className="d-flex justify-content-between align-items-center border-bottom py-1 smallx">
-                      <span>{d.name} x{d.qty}</span>
-                      <button className="btn btn-sm p-0 text-danger" onClick={() => removeDraft(d.id)}>×</button>
-                    </div>
-                  ))}
-                </div>
-                {undoItem && (
-                  <button className="btn btn-sm btn-warning w-100 mt-2 py-1" onClick={undoDelete}>↩ Qaytarish (10s)</button>
-                )}
-              </div>
+              )}
 
-              <div className="h2x mb-2">ASOSIY SAVAT</div>
-              <div className="list-scroll">
-                {items.length === 0 ? <div className="smallx muted py-3">Savat bo‘sh</div> : (
-                  <div className="d-flex flex-column gap-2">
-                    {items.map(it => (
-                      <div key={it.id} className="cardx p-2 text-start d-flex justify-content-between align-items-center mb-2">
-                        <div className="d-flex align-items-center gap-2">
-                          {/* Yangi qo'shilgan checkbox */}
-                          <input 
-                            type="checkbox" 
-                            style={{ width: "18px", height: "18px" }}
-                            checked={draftSelection.includes(it.id)}
-                            onChange={() => toggleDraftSelect(it.id)}
-                          />
-                          {/* Taom nomi ustiga bossa, oddiy tanlash (selectedItem) ishlashi uchun */}
-                          <div className="bodyx fw-bold" style={{ cursor: "pointer" }} onClick={() => setSelectedItemId(it.id)}>
-                            {it.name}
+              {/* 🔥 ESKI BUYURTMALAR (Oshxonaga yuborib bo'lingan) */}
+              {alreadySentItems.length > 0 && (
+                <div className="mb-3 px-3 py-2" style={{ backgroundColor: "#f8fafc", borderRadius: "10px", border: "1px solid #cbd5e1" }}>
+                  <div className="small fw-bold text-secondary mb-2 d-flex align-items-center gap-2">
+                    <span>✅</span> OSHXONADA (Oldin yuborilganlar)
+                  </div>
+                  <div style={{ maxHeight: "110px", overflowY: "auto", paddingRight: "4px" }}>
+                    {alreadySentItems.map((it, i) => (
+                      <div key={it.id || i} className="d-flex justify-content-between text-muted border-bottom border-light pb-1 mb-1" style={{ fontSize: "13px" }}>
+                        <span className="text-truncate pe-2" style={{ maxWidth: "75%" }}>{it.qty}x {it.name}</span>
+                        <span className="fw-bold">{formatUZS(it.price * it.qty)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="h2x mb-3 text-primary d-flex align-items-center gap-2">
+                YANGI QO'SHILAYOTGANLAR {localCart.length > 0 && <span className="badge bg-danger rounded-pill px-2">{localCart.length}</span>}
+              </div>
+              
+              <div className="list-scroll flex-grow-1 mb-3" style={{maxHeight: "35vh", overflowY: "auto"}}>
+                {localCart.length === 0 ? <div className="text-center text-muted py-5 fw-bold">Savat bo‘sh 🛒</div> : (
+                  <div className="d-flex flex-column gap-2 pe-1">
+                    {localCart.map((it, i) => (
+                      <div key={it.id || i} className="cardx p-2 shadow-sm" style={{ border: "1px solid #e2e8f0", backgroundColor: draftSelection.includes(it.id) ? "#f8fafc" : "#fff" }}>
+                        <div className="d-flex justify-content-between align-items-center gap-2">
+                          
+                          <div className="d-flex align-items-center gap-2 text-truncate">
+                            <input 
+                              type="checkbox" 
+                              style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "#3b82f6" }}
+                              checked={draftSelection.includes(it.id)}
+                              onChange={() => toggleDraftSelect(it.id)}
+                            />
+                            <div className="fw-bold text-truncate text-dark" title={it.name}>
+                              {it.name} <span className="text-muted fw-normal ms-1 small">- {formatUZS(it.price)}</span>
+                            </div>
                           </div>
+                          
+                          <div className="d-flex align-items-center gap-2 flex-shrink-0 bg-light rounded-pill p-1 border">
+                            <button className="btn btn-sm btn-white rounded-circle shadow-sm fw-bold text-danger" style={{width: 28, height: 28, padding: 0}} onClick={() => changeQty(it, -1)}>−</button>
+                            <span className="fw-bold px-1">{it.qty}</span>
+                            <button className="btn btn-sm btn-white rounded-circle shadow-sm fw-bold text-success" style={{width: 28, height: 28, padding: 0}} onClick={() => changeQty(it, +1)}>+</button>
+                          </div>
+
                         </div>
-                        <div className="bodyx fw-bold">x{it.qty}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Jami va Action tugmalari */}
-              <div className="mt-2 pt-2 border-top">
-                <div className="d-flex justify-content-between mb-2">
-                  <div className="bodyx fw-bold">Jami:</div>
-                  <div className="priceX">{formatUZS(total)}</div>
-                </div>
-                
-                <div className="qtybox mb-2">
-                  <button className="btn btn-outline-secondary" onClick={() => changeQty(-1)} disabled={!selectedItem}>−</button>
-                  <div className="qtynum">{selectedItem ? selectedItem.qty : 0}</div>
-                  <button className="btn btn-primaryx" onClick={() => changeQty(+1)} disabled={!selectedItem}>+</button>
+              <div className="pt-3 border-top mt-auto">
+                {/* Mehmonlar */}
+                <div className="d-flex justify-content-between align-items-center mb-2 bg-light p-2 rounded-3 border">
+                  <div className="fw-bold text-muted d-flex align-items-center gap-2">
+                    <span className="fs-5">👥</span> Mehmonlar
+                  </div>
+                  <div className="d-flex align-items-center gap-3">
+                    <button className="btn btn-sm btn-white border rounded-circle fw-bold shadow-sm" style={{width: 32, height: 32}} onClick={() => changeGuests(-1)}>−</button>
+                    <span className="fw-bold fs-5 text-primary">{order.guestsCount || 1}</span>
+                    <button className="btn btn-sm btn-white border rounded-circle fw-bold shadow-sm" style={{width: 32, height: 32}} onClick={() => changeGuests(+1)}>+</button>
+                  </div>
                 </div>
 
-                {/* --- YANGI QO'SHILGAN TUGMA --- */}
-                {selectedItem && (
-                  <button className="btn btn-outline-info w-100 mb-2 py-1 fw-bold" onClick={moveItemToDraft}>
-                    📁 Keyinroqqa olib qo'yish
-                  </button>
-                )}
+                <div className="d-flex justify-content-between align-items-center mb-2 px-1">
+                  <div className="text-muted small fw-bold">Xizmat haqqi:</div>
+                  <div className="fw-bold text-muted">{formatUZS(serviceFee)}</div>
+                </div>
+
+                <div className="d-flex justify-content-between align-items-center mb-3 px-1">
+                  <div className="h2x m-0 fw-bold">Jami hisob:</div>
+                  <div className="priceX fs-4 text-success">{formatUZS(grandTotal)}</div>
+                </div>
 
                 {draftSelection.length > 0 && (
-                    <button className="btn btn-outline-info w-100 mb-2 py-1 fw-bold" onClick={moveSelectedToDraft}>
-                      📁 Belgilanganlarni keyinroqqa ({draftSelection.length})
-                    </button>
+                  <button className="btn btn-light w-100 mb-2 fw-bold text-info border-info" style={{ border: "2px solid" }} onClick={moveSelectedToDraft}>
+                    📁 Belgilanganlarni keyinroqqa
+                  </button>
+                )}
+                
+                <button 
+                  className="btn w-100 py-3 fs-5 fw-bold shadow d-flex justify-content-center align-items-center gap-2" 
+                  style={{ 
+                    borderRadius: "14px", 
+                    backgroundColor: localCart.length === 0 || isSending ? "#94a3b8" : "#10b981", 
+                    color: "#fff",
+                    border: "none",
+                    transition: "0.2s"
+                  }} 
+                  onClick={sendToKitchen}
+                  disabled={localCart.length === 0 || isSending}
+                >
+                  {isSending ? (
+                     <span>⏳ Jo'natilmoqda...</span>
+                  ) : (
+                     <><span>🍳</span> Oshxonaga yuborish</>
                   )}
-
-                <button className="btn btn-primaryx w-100 py-2" onClick={sendToKitchen}>🍳 Oshxonaga yuborish</button>
-                {toast && <div className="smallx mt-2 text-center text-success">{toast}</div>}
+                </button>
+                {toast && <div className="small mt-2 text-center fw-bold text-danger">{toast}</div>}
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import WaiterHome from "../components/ofitsant/WaiterHome.jsx";
 import OrderScreen from "../components/ofitsant/OrderScreen.jsx";
-import "../styles/ofitsantStyles.css"
+import "../components/ofitsant/ofitsantStyles.css"
 
 export default function Ofitsant() {
   // ofitsant.jsx ichida:

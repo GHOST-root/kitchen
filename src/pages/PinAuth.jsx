@@ -6,6 +6,7 @@ export default function PinAuth({ username }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // const { logout } = useContext(AuthContext);
 
   // Klaviaturadan raqam bosilganda
   const handleKeyPress = (num) => {
@@ -42,11 +43,11 @@ export default function PinAuth({ username }) {
 
   return (
     <div className="vh-100 d-flex flex-column justify-content-center align-items-center bg-dark text-white">
-      <div className="text-center mb-4">
+      {/* <div className="text-center mb-4">
         <h1 className="mb-2">🔒</h1>
         <h3>Xush kelibsiz, {username || "Xodim"}!</h3>
         <p className="text-muted">Ekranni ochish uchun PIN kodni kiriting</p>
-      </div>
+      </div> */}
 
       <div style={{ width: "100%", maxWidth: "320px" }} className="d-flex flex-column align-items-center">
         {error && <div className="alert alert-danger py-2 px-3 text-center small fw-bold w-100">{error}</div>}

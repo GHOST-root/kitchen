@@ -1,0 +1,163 @@
+/* Tizimning umumiy foni - Zamonaviy ochiq rang */
+.ofitsant-page-wrapper {
+  background-color: #f0f4f8; 
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #1e293b;
+}
+
+/* === ASOSIY KARTOCHKALAR (Mazzali dizayn) === */
+.cardx {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 8px 24px rgba(149, 157, 165, 0.08);
+  transition: all 0.2s ease-in-out;
+}
+
+.cardx:hover {
+  box-shadow: 0 12px 32px rgba(149, 157, 165, 0.12);
+}
+
+/* === ASOSIY KO'K TUGMA (+ Savatga, Yuborish) === */
+.btn-primaryx {
+  background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  padding: 10px 16px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25) !important;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.btn-primaryx:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35) !important;
+}
+
+.btn-primaryx:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* === INPUT VA QIDIRUV === */
+.inputx {
+  border-radius: 12px !important;
+  border: 1px solid #cbd5e1 !important;
+  padding: 12px 16px !important;
+  background-color: #f8fafc !important;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.inputx:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15) !important;
+  outline: none;
+  background-color: #ffffff !important;
+}
+
+/* === SARLAVHALAR VA NARXLAR === */
+.h2x {
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  color: #475569 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.priceX {
+  font-weight: 800 !important;
+  color: #10b981 !important; /* Zamonaviy yashil */
+  font-size: 1.15rem;
+}
+
+/* === SAVAT SCROLLBARI (Windowsda xunuk ko'rinmasligi uchun) === */
+.list-scroll {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.list-scroll::-webkit-scrollbar { width: 6px; }
+.list-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+.list-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+.list-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.cart-sticky { position: sticky; top: 16px; }
+
+/* === STATUS CHIPLARI === */
+.chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: inline-block;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+.chip-busy { background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; }
+.chip-empty { background: #ecfdf5; color: #10b981; border: 1px solid #6ee7b7; }
+.chip-ready { background: #fef3c7; color: #f59e0b; border: 1px solid #fcd34d; }
+.chip-bill { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; }
+
+/* === MOBIL MOSLASHUV === */
+@media (max-width: 768px){
+  .cardx { padding: 12px; }
+  .list-scroll { max-height: 35vh; }
+  .cart-sticky { position: relative; top: 0; }
+  .h2x { font-size: 0.9rem !important; }
+}
+
+/* === ZAMONAVIY FILTR TUGMALARI === */
+.filter-chip {
+  padding: 8px 18px;
+  border-radius: 100px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.filter-chip:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.filter-chip.active {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+/* Modal animatsiyasi */
+.scale-in {
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes scaleIn {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* === RESPONSIVLIK (Mobil ekranlar uchun) === */
+@media (max-width: 768px) {
+  /* Header mobil telefonda sig'ishi uchun */
+  .container-fluid {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  
+  /* Filtrlar mobil telefonda gorizontal skroll bo'lishi uchun */
+  .filter-chip {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  
+  /* Qidiruv qutisi kichrayadi */
+  .inputx {
+    padding: 10px 16px !important;
+    font-size: 0.95rem;
+  }
+}

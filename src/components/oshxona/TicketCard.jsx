@@ -1,20 +1,26 @@
 import React, { memo } from "react";
-import { useDraggable } from "@dnd-kit/core";
+
+// 🔥 1. Vaqtni xavfsiz o'qib oluvchi funksiya
+function parseSafeTime(isoStr) {
+  if (!isoStr) return new Date();
+  let s = String(isoStr).replace(" ", "T"); 
+  if (!s.endsWith("Z") && !s.match(/[+-]\d\d:?\d\d$/)) {
+    s += "Z";
+  }
+  return new Date(s);
+}
 
 function fmtClock(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getHours()).padStart(2, "0")}:${String(
-    d.getMinutes()
-  ).padStart(2, "0")}`;
+  const t = parseSafeTime(iso);
+  if (Number.isNaN(t)) return "";
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function minutesSince(iso) {
-  if (!iso) return 0;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 0;
-  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+  const t = parseSafeTime(iso);
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.now() - t) / 60000));
 }
 
 const TicketCard = memo(function TicketCard({
@@ -22,92 +28,54 @@ const TicketCard = memo(function TicketCard({
   items,
   busy,
   onOpen,
-  onAction,
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    isDragging,
-  } = useDraggable({
-    id: `ticket:${ticket.id}`,
-    data: {
-      ticketId: ticket.id,
-      currentStatus: ticket.status,
-    },
-  });
-
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-        opacity: isDragging ? 0.55 : 1,
-        zIndex: isDragging ? 1000 : "auto",
-      }
-    : undefined;
 
   const createdAt = ticket.created_at || ticket.createdAt || null;
   const time = fmtClock(createdAt);
   const mins = minutesSince(createdAt);
-  const timeLabel = time ? `${time} (+${mins}m)` : "";
+  const timeLabel = time ? `${time}` : "";
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
       className="ticket-card"
       data-status={ticket.status}
-      {...attributes}
-      {...listeners}
       role="button"
       tabIndex={0}
-      onDoubleClick={() => onOpen?.(ticket)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onOpen?.(ticket);
+      }}
       aria-busy={busy ? "true" : "false"}
     >
-      <div className="ticket-head">
-        <div className="table-number">
+      <div className="ticket-head d-flex justify-content-between align-items-center mb-2">
+        <div className="table-number fw-bold" style={{ fontSize: "1.1rem" }}>
           Stol {ticket.table_number_snapshot || ticket.table_number || "?"}
         </div>
-        <div className="ticket-time">{timeLabel}</div>
+        <div className="ticket-time fw-bold text-danger">{timeLabel}</div>
       </div>
 
-      <ul className="ticket-items">
+      {/* 🔥 MANA SHU YER TO'G'RILANDI (Obyekt xatosi) */}
+      <ul className="list-unstyled mt-2 mb-0">
         {items?.length ? (
-          items.slice(0, 6).map((text, i) => <li key={i}>{text}</li>)
+          items.map((item, i) => (
+            <li key={item.id || i} className="mb-2 border-bottom pb-1">
+              <div className="fw-bold" style={{ fontSize: "14px", color: "#1e293b", lineHeight: "1.2" }}>
+                <span className="text-primary me-2">{item.qty}x</span> 
+                {item.name}
+              </div>
+              {item.note && (
+                <div className="text-muted ms-3 mt-1" style={{ fontSize: "12px", fontStyle: "italic" }}>
+                  ✍️ {item.note}
+                </div>
+              )}
+            </li>
+          ))
         ) : (
-          <li>(itemlar yo‘q)</li>
+          <li className="text-muted small">(Taomlar yo'q)</li>
         )}
       </ul>
-
-      {ticket.status === "NEW" && (
-        <button
-          type="button"
-          className="kds-btn"
-          disabled={!!busy}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAction?.(ticket, "COOKING");
-          }}
-        >
-          {busy ? "..." : "QABUL QIL"}
-        </button>
-      )}
-
-      {ticket.status === "COOKING" && (
-        <button
-          type="button"
-          className="kds-btn"
-          disabled={!!busy}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAction?.(ticket, "READY");
-          }}
-        >
-          {busy ? "..." : "TAYYOR"}
-        </button>
-      )}
+      
+      {busy && <div className="text-center mt-2 small text-muted fw-bold">Yuklanmoqda...</div>}
     </div>
   );
 });

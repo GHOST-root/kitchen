@@ -239,6 +239,27 @@ body{
   outline-offset: -6px;
 }
 
+/* Oshxona daskasidagi ustunlar (kolonkalar) uchun dizayn */
+.kds-col {
+  border: 2px solid #e0e4e8; /* Ustun atrofiga kulrang chegara */
+  border-radius: 12px;       /* Burchaklarni yumaloqlash */
+  background-color: #f8f9fc; /* Karta ajralib turishi uchun juda och fon */
+  padding: 10px;             /* Ichki bo'shliq */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;                 /* Ichidagi kartochkalar orasidagi masofa */
+}
+
+/* Ustun sarlavhasi (YANGI, TAYYORLANMOQDA...) ajralib turishi uchun */
+.kds-col-title {
+  font-weight: bold;
+  font-size: 16px;
+  color: #333;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e0e4e8; /* Sarlavha tagiga chiziq */
+  margin-bottom: 10px;
+}
+
 /* ticket card (rasmga o'xshash border rangli) */
 .ticket-card{
   background:var(--card);
@@ -385,4 +406,35 @@ input[type=number] {
 
 .pmb{
   color: #DC2626 !important;
+}
+
+/* ========================================================= */
+/* OSHXONA KARTOCHKALARI UCHUN TO'LIQ BORDER                 */
+/* ========================================================= */
+
+/* Yangi buyurtmalar - To'liq Qizil ramka */
+.ticket-card[data-status="Yangi"] {
+  border: 3px solid #ef4444 !important; /* Qalinroq qizil border */
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15) !important; /* Yengil qizil soya */
+}
+.ticket-card[data-status="Yangi"] .ticket-time {
+  color: #ef4444 !important;
+}
+
+/* Tayyorlanayotganlar - To'liq Olovrang ramka */
+.ticket-card[data-status="Tayyorlanmoqda"] {
+  border: 3px solid #f59e0b !important; /* Qalinroq olovrang border */
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15) !important; /* Yengil olovrang soya */
+}
+.ticket-card[data-status="Tayyorlanmoqda"] .ticket-time {
+  color: #f59e0b !important;
+}
+
+/* Tayyor bo'lganlar - To'liq Yashil ramka */
+.ticket-card[data-status="Tayyor"] {
+  border: 3px solid #10b981 !important; /* Qalinroq yashil border */
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15) !important; /* Yengil yashil soya */
+}
+.ticket-card[data-status="Tayyor"] .ticket-time {
+  color: #10b981 !important;
 }
